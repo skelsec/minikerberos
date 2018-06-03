@@ -24,7 +24,7 @@ setup(
 	zip_safe = True,
 	#
 	# license="LICENSE.txt",
-	description="Kerberos implementation in pure Python",
+	description="Kerberos manipulation library in pure Python",
 
 	# long_description=open("README.txt").read(),
 	python_requires='>=3.6',
