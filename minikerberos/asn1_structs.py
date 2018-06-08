@@ -14,7 +14,9 @@ import os
 TAG = 'explicit'
 
 # class
+UNIVERSAL = 0
 APPLICATION = 1
+CONTEXT = 2
 krb5_pvno = 5 #-- current Kerberos protocol version number
 
 """
@@ -26,6 +28,8 @@ class NegotiationToken(core.Choice):
 		
 ]
 """
+
+
 	
 class NAME_TYPE(core.Enumerated):
 	_map = {
@@ -62,37 +66,37 @@ class MESSAGE_TYPE(core.Enumerated):
 	
 class PADATA_TYPE(core.Enumerated):
 	_map = {
-		0: 'NONE', #(0),
-		1: 'TGS-REQ', #(1),
-		1: 'AP-REQ', #(1),
-		2: 'ENC-TIMESTAMP', #(2),
-		3: 'PW-SALT', #(3),
-		5: 'ENC-UNIX-TIME', #(5),
-		6: 'SANDIA-SECUREID', #(6),
-		7: 'SESAME', #(7),
-		8: 'OSF-DCE', #(8),
-		9: 'CYBERSAFE-SECUREID', #(9),
-		10 : 'AFS3-SALT', #(10),
-		11 : 'ETYPE-INFO', #(11),
-		12 : 'SAM-CHALLENGE', #(12), -- ', #(sam/otp)
-		13 : 'SAM-RESPONSE', #(13), -- ', #(sam/otp)
-		14 : 'PK-AS-REQ-19', #(14), -- ', #(PKINIT-19)
-		15 : 'PK-AS-REP-19', #(15), -- ', #(PKINIT-19)
-		15 : 'PK-AS-REQ-WIN', #(15), -- ', #(PKINIT - old number)
-		16 : 'PK-AS-REQ', #(16), -- ', #(PKINIT-25)
-		17 : 'PK-AS-REP', #(17), -- ', #(PKINIT-25)
-		18 : 'PA-PK-OCSP-RESPONSE', #(18),
-		19 : 'ETYPE-INFO2', #(19),
-		20 : 'USE-SPECIFIED-KVNO', #(20),
-		20 : 'SVR-REFERRAL-INFO', #(20), --- old ms referral number
-		21 : 'SAM-REDIRECT', #(21), -- ', #(sam/otp)
-		22 : 'GET-FROM-TYPED-DATA', #(22),
-		23 : 'SAM-ETYPE-INFO', #(23),
-		25 : 'SERVER-REFERRAL', #(25),
-		24 : 'ALT-PRINC', #(24),		-- ', #(crawdad@fnal.gov)
-		30 : 'SAM-CHALLENGE2', #(30),		-- ', #(kenh@pobox.com)
-		31 : 'SAM-RESPONSE2', #(31),		-- ', #(kenh@pobox.com)
-		41 : 'PA-EXTRA-TGT', #(41),			-- Reserved extra TGT
+		0   : 'NONE', #(0),
+		1   : 'TGS-REQ', #(1),
+		1   : 'AP-REQ', #(1),
+		2   : 'ENC-TIMESTAMP', #(2),
+		3   : 'PW-SALT', #(3),
+		5   : 'ENC-UNIX-TIME', #(5),
+		6   : 'SANDIA-SECUREID', #(6),
+		7   : 'SESAME', #(7),
+		8   : 'OSF-DCE', #(8),
+		9   : 'CYBERSAFE-SECUREID', #(9),
+		10  : 'AFS3-SALT', #(10),
+		11  : 'ETYPE-INFO', #(11),
+		12  : 'SAM-CHALLENGE', #(12), -- ', #(sam/otp)
+		13  : 'SAM-RESPONSE', #(13), -- ', #(sam/otp)
+		14  : 'PK-AS-REQ-19', #(14), -- ', #(PKINIT-19)
+		15  : 'PK-AS-REP-19', #(15), -- ', #(PKINIT-19)
+		15  : 'PK-AS-REQ-WIN', #(15), -- ', #(PKINIT - old number)
+		16  : 'PK-AS-REQ', #(16), -- ', #(PKINIT-25)
+		17  : 'PK-AS-REP', #(17), -- ', #(PKINIT-25)
+		18  : 'PA-PK-OCSP-RESPONSE', #(18),
+		19  : 'ETYPE-INFO2', #(19),
+		20  : 'USE-SPECIFIED-KVNO', #(20),
+		20  : 'SVR-REFERRAL-INFO', #(20), --- old ms referral number
+		21  : 'SAM-REDIRECT', #(21), -- ', #(sam/otp)
+		22  : 'GET-FROM-TYPED-DATA', #(22),
+		23  : 'SAM-ETYPE-INFO', #(23),
+		25  : 'SERVER-REFERRAL', #(25),
+		24  : 'ALT-PRINC', #(24),		-- ', #(crawdad@fnal.gov)
+		30  : 'SAM-CHALLENGE2', #(30),		-- ', #(kenh@pobox.com)
+		31  : 'SAM-RESPONSE2', #(31),		-- ', #(kenh@pobox.com)
+		41  : 'PA-EXTRA-TGT', #(41),			-- Reserved extra TGT
 		102 : 'TD-KRB-PRINCIPAL', #(102),	-- PrincipalName
 		104 : 'PK-TD-TRUSTED-CERTIFIERS', #(104), -- PKINIT
 		105 : 'PK-TD-CERTIFICATE-INDEX', #(105), -- PKINIT
@@ -292,7 +296,7 @@ class AuthorizationData(core.SequenceOf):
 	_child_spec = AuthorizationDataElement
 	
 
-class APOptions(core.IntegerBitString):
+class APOptions(core.BitString):
 	_map = {
 		0 : 'reserved', #(0),
 		1 : 'use-session-key', #(1),
@@ -390,7 +394,7 @@ class LR_TYPE(core.Enumerated):
 	
 class LastReqInner(core.Sequence):
 	_fields = [
-		('lr-type', LR_TYPE, {'tag_type': TAG, 'tag': 0}),
+		('lr-type', krb5int32, {'tag_type': TAG, 'tag': 0}), #LR_TYPE
 		('lr-value', KerberosTime, {'tag_type': TAG, 'tag': 1}),
 	]
 
@@ -400,7 +404,7 @@ class LastReq(core.SequenceOf):
 
 class EncryptedData(core.Sequence):
 	_fields = [
-		('etype', ENCTYPE, {'tag_type': TAG, 'tag': 0}), #-- EncryptionType
+		('etype', krb5int32, {'tag_type': TAG, 'tag': 0}), #-- EncryptionType
 		('kvno', krb5uint32, {'tag_type': TAG, 'tag': 1, 'optional': True}), #
 		('cipher', core.OctetString, {'tag_type': TAG, 'tag': 2}), #ciphertext
 	]
@@ -470,7 +474,7 @@ class Authenticator(core.Sequence):
 	explicit = (APPLICATION,2)
 	
 	_fields = [
-		('authenticator-vno', CKSUMTYPE, {'tag_type': TAG, 'tag': 0}),
+		('authenticator-vno', krb5int32, {'tag_type': TAG, 'tag': 0}),
 		('crealm', Realm, {'tag_type': TAG, 'tag': 1}),
 		('cname', PrincipalName, {'tag_type': TAG, 'tag': 2}),
 		('cksum', Checksum, {'tag_type': TAG, 'tag': 3, 'optional': True}),
@@ -490,7 +494,7 @@ class PA_DATA(core.Sequence): #!!!! IT STARTS AT ONE!!!!
 	
 class ETYPE_INFO_ENTRY(core.Sequence):
 	_fields = [
-		('etype', ENCTYPE, {'tag_type': TAG, 'tag': 0}),
+		('etype', krb5int32, {'tag_type': TAG, 'tag': 0}),
 		('salt', core.OctetString, {'tag_type': TAG, 'tag': 1, 'optional': True}),
 		('salttype', krb5int32, {'tag_type': TAG, 'tag': 2, 'optional': True}),
 	]
@@ -501,7 +505,7 @@ class ETYPE_INFO(core.SequenceOf):
 
 class ETYPE_INFO2_ENTRY(core.Sequence):
 	_fields = [
-		('etype', ENCTYPE, {'tag_type': TAG, 'tag': 0}),
+		('etype', krb5int32, {'tag_type': TAG, 'tag': 0}),
 		('salt', KerberosString, {'tag_type': TAG, 'tag': 1, 'optional': True}),
 		('s2kparams', core.OctetString, {'tag_type': TAG, 'tag': 2, 'optional': True}),
 	]
@@ -551,7 +555,6 @@ class KDC_REQ(core.Sequence):
 
 
 class AS_REQ(KDC_REQ):
-	"""AS-REQ ::= [APPLICATION 10] KDC-REQ"""
 	explicit = (APPLICATION, 10)
 	
 class TGS_REQ(KDC_REQ):
@@ -581,7 +584,7 @@ class PROV_SRV_LOCATION(core.GeneralString):
 class KDC_REP(core.Sequence):
 	_fields = [
 		('pvno', core.Integer, {'tag_type': TAG, 'tag': 0}),
-		('msg-type', MESSAGE_TYPE, {'tag_type': TAG, 'tag': 1}),
+		('msg-type', krb5int32, {'tag_type': TAG, 'tag': 1}), #MESSAGE_TYPE
 		('padata', METHOD_DATA, {'tag_type': TAG, 'tag': 2, 'optional': True}),
 		('crealm', Realm , {'tag_type': TAG, 'tag': 3}),
 		('cname', PrincipalName , {'tag_type': TAG, 'tag': 4}),
@@ -627,7 +630,7 @@ class AP_REQ(core.Sequence):
 	explicit = (APPLICATION, 14)
 	_fields = [
 		('pvno', krb5int32, {'tag_type': TAG, 'tag': 0}),
-		('msg-type', MESSAGE_TYPE, {'tag_type': TAG, 'tag': 1}),
+		('msg-type', krb5int32, {'tag_type': TAG, 'tag': 1}), #MESSAGE_TYPE
 		('ap-options', APOptions, {'tag_type': TAG, 'tag': 2}),
 		('ticket', Ticket , {'tag_type': TAG, 'tag': 3}),
 		('authenticator', EncryptedData , {'tag_type': TAG, 'tag': 4}),
@@ -637,7 +640,7 @@ class AP_REP(core.Sequence):
 	explicit = (APPLICATION, 15)
 	_fields = [
 		('pvno', krb5int32, {'tag_type': TAG, 'tag': 0}),
-		('msg-type', MESSAGE_TYPE, {'tag_type': TAG, 'tag': 1}),
+		('msg-type', krb5int32, {'tag_type': TAG, 'tag': 1}),#MESSAGE_TYPE
 		('enc-part', EncryptedData , {'tag_type': TAG, 'tag': 2}),
 	]
 
@@ -667,7 +670,7 @@ class KRB_SAFE(core.Sequence):
 	explicit = (APPLICATION, 20)
 	_fields = [
 		('pvno', krb5int32, {'tag_type': TAG, 'tag': 0}),
-		('msg-type', MESSAGE_TYPE, {'tag_type': TAG, 'tag': 1}),
+		('msg-type', krb5int32, {'tag_type': TAG, 'tag': 1}),#MESSAGE_TYPE
 		('safe-body', KRB_SAFE_BODY , {'tag_type': TAG, 'tag': 2}),
 		('cksum', Checksum , {'tag_type': TAG, 'tag': 3}),
 	]
@@ -676,7 +679,7 @@ class KRB_PRIV(core.Sequence):
 	explicit = (APPLICATION, 21)
 	_fields = [
 		('pvno', krb5int32, {'tag_type': TAG, 'tag': 0}),
-		('msg-type', MESSAGE_TYPE, {'tag_type': TAG, 'tag': 1}),
+		('msg-type', krb5int32, {'tag_type': TAG, 'tag': 1}),#MESSAGE_TYPE
 		('enc-part', EncryptedData, {'tag_type': TAG, 'tag': 2}),
 	] 
 
@@ -737,7 +740,7 @@ class KRB_ERROR(core.Sequence):
 	explicit = (APPLICATION, 30)
 	_fields = [
 		('pvno', krb5int32, {'tag_type': TAG, 'tag': 0}),
-		('msg-type', MESSAGE_TYPE, {'tag_type': TAG, 'tag': 1}),
+		('msg-type',krb5int32 , {'tag_type': TAG, 'tag': 1}), #MESSAGE_TYPE
 		('ctime', KerberosTime , {'tag_type': TAG, 'tag': 2, 'optional': True}),
 		('cusec', krb5int32 , {'tag_type': TAG, 'tag': 3, 'optional': True}),
 		('stime', KerberosTime , {'tag_type': TAG, 'tag': 4}),
@@ -763,6 +766,12 @@ class EtypeList(core.SequenceOf):
 	#-- decreasing preference order, favorite choice first
 	_child_spec = ENCTYPE
 
+	
+class KerberosResponse(core.Choice):
+	_alternatives = [
+		('AS_REP', AS_REP, {'implicit': (APPLICATION,11) }  ),
+		('KRB_ERROR', KRB_ERROR, {'implicit': (APPLICATION,30) } ),
+	]
 
 #	
 #DOMAIN-X500-COMPRESS	krb5int32 ::= 1
