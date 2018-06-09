@@ -305,26 +305,6 @@ class APOptions(core.BitString):
 
 	
 class TicketFlags(core.BitString):
-	"""
-	TicketFlags ::= BIT STRING {
-	reserved(0),
-	forwardable(1),
-	forwarded(2),
-	proxiable(3),
-	proxy(4),
-	may-postdate(5),
-	postdated(6),
-	invalid(7),
-	renewable(8),
-	initial(9),
-	pre-authent(10),
-	hw-authent(11),
-	transited-policy-checked(12),
-	ok-as-delegate(13),
-	anonymous(14),
-	enc-pa-rep(15)
-	}
-	"""
 	_map = {
 		0: 'reserved',
 		1: 'forwardable',
@@ -770,8 +750,22 @@ class EtypeList(core.SequenceOf):
 class KerberosResponse(core.Choice):
 	_alternatives = [
 		('AS_REP', AS_REP, {'implicit': (APPLICATION,11) }  ),
+		('TGS_REP', TGS_REP, {'implicit': (APPLICATION,13) }  ),
 		('KRB_ERROR', KRB_ERROR, {'implicit': (APPLICATION,30) } ),
 	]
+	
+	
+class KRBCRED(core.Sequence):
+	explicit = (APPLICATION, 22)
+	
+	_fields = [
+		('pvno', core.Integer, {'tag_type': TAG, 'tag': 0}),
+		('msg-type', core.Integer, {'tag_type': TAG, 'tag': 1}),
+		('tickets', SequenceOfTicket, {'tag_type': TAG, 'tag': 2}),
+		('enc-part', EncryptedData , {'tag_type': TAG, 'tag': 3}),
+	
+	]
+
 
 #	
 #DOMAIN-X500-COMPRESS	krb5int32 ::= 1

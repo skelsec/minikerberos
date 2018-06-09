@@ -16,6 +16,7 @@ class TargetServer:
 	def __init__(self):
 		self.ip = None
 		self.hostname = None
+		self.service = None #the service we are trying to get a ticket for (eg. cifs/mssql...)
 		self.domain = None #the kerberos realm
 		self.kerberos_ip = None #IP address of the kerberos server (active directory)
 

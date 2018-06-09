@@ -2,6 +2,7 @@ from asn1_structs import *
 from kerberoserror import *
 from constants import *
 from common import *
+from ccache import *
 from encryption import _enctype_table, Key
 import collections
 import datetime
@@ -81,6 +82,7 @@ class KerbrosComm:
 		self.usercreds = ccred
 		self.target = target
 		self.ksoc = ksoc
+		self.ccache = CCACHE()
 		self.kerberos_session_key = None
 		self.kerberos_TGT = None
 		self.kerberos_cipher = None
@@ -114,9 +116,7 @@ class KerbrosComm:
 		kdc_req['padata'] = [pa_data_1]
 		kdc_req['req-body'] = KDC_REQ_BODY(kdc_req_body)
 		
-		req = AS_REQ(kdc_req)
-		print(req.dump())
-		
+		req = AS_REQ(kdc_req)	
 		
 		rep = self.ksoc.sendrecv(req.dump())
 				
@@ -180,21 +180,18 @@ class KerbrosComm:
 		kdc_req['req-body'] = KDC_REQ_BODY(kdc_req_body)
 		
 		req = AS_REQ(kdc_req)
-		print(req.dump())
-		with open('test3.asn1','wb') as f:
-			f.write(req.dump())
 		
 		rep = self.ksoc.sendrecv(req.dump())
-		print(rep.native)
 		rep = rep.native
 		self.kerberos_TGT = rep
+		
 		
 		cipherText = rep['enc-part']['cipher']
 		temp = cipher.decrypt(key, 3, cipherText)
 		plainText = EncASRepPart.load(temp).native
 		print(plainText)
 		self.kerberos_session_key = Key(cipher.enctype, plainText['key']['keyvalue'])
-		
+		self.ccache.add_tgt(self.kerberos_TGT, plainText)
 		
 	def get_TGS(self):
 		#construct tgs_req
@@ -202,6 +199,7 @@ class KerbrosComm:
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','renewable_ok', 'canonicalize']))
 		kdc_req_body['realm'] = self.target.domain.upper()
+		kdc_req_body['sname'] = PrincipalName({'name-type': 2, 'name-string': [self.target.service, self.target.hostname]})
 		kdc_req_body['till'] = now + datetime.timedelta(days=1)
 		kdc_req_body['nonce'] = secrets.randbits(31)
 		kdc_req_body['etype'] = [self.kerberos_cipher_type]
@@ -221,7 +219,6 @@ class KerbrosComm:
 		ap_req['ap-options'] = APOptions(set())
 		ap_req['ticket'] = Ticket(self.kerberos_TGT['ticket'])
 		ap_req['authenticator'] = EncryptedData({'etype': self.kerberos_cipher_type, 'cipher': authenticator_data_enc})
-		AP_REQ(ap_req)
 		
 		pa_data_1 = {}
 		pa_data_1['padata-type'] = PaDataType.TGS_REQ.value
@@ -235,9 +232,24 @@ class KerbrosComm:
 		kdc_req['req-body'] = KDC_REQ_BODY(kdc_req_body)
 		
 		req = TGS_REQ(kdc_req)
+		with open('tgs_wrong.asn1','wb') as f:
+			f.write(req.dump())
 		#print(req.native)
 		rep = self.ksoc.sendrecv(req.dump())
-		print(rep.native)
+		tgs = rep.native
+		
+		encTGSRepPart = EncTGSRepPart.load(self.kerberos_cipher.decrypt(self.kerberos_session_key, 8, tgs['enc-part']['cipher'])).native
+		self.kerberos_session_key = Key(encTGSRepPart['key']['keytype'], encTGSRepPart['key']['keyvalue'])
+		self.kerberos_cipher = _enctype_table[encTGSRepPart['key']['keytype']]
+		
+		print(tgs['ticket']['realm'])
+		print(tgs['ticket']['sname'])
+		self.ccache.add_tgs(tgs, encTGSRepPart)
+		
+		
+		
+		
+		
 		
 
 if __name__ == '__main__':
@@ -255,6 +267,7 @@ if __name__ == '__main__':
 	target = TargetServer()
 	target.ip = '192.168.9.15'
 	target.hostname = 'FileServer'
+	target.service = 'cifs'
 	target.domain = 'TEST.corp' #the kerberos realm
 	target.kerberos_ip = '192.168.9.1' #IP address of the kerberos server (active directory)
 	
@@ -263,3 +276,4 @@ if __name__ == '__main__':
 	kc = KerbrosComm(ccred, target, ksoc)
 	tgt = kc.get_TGT()
 	tgs = kc.get_TGS()
+	kc.ccache.to_file('test.ccache')
