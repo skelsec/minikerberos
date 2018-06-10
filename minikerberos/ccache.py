@@ -8,13 +8,10 @@ import os
 import datetime
 import glob
 from asn1_structs import *
+from common import dt_to_kerbtime
 from asn1crypto import core
 
-# this is from impacket, a bit modified
-windows_epoch = datetime.datetime(1970,1,1, tzinfo=datetime.timezone.utc)
-def dt_to_kerbtime(dt):
-	td = dt - windows_epoch
-	return int((td.microseconds + (td.seconds + td.days * 24 * 3600) * 10**6) / 1e6)
+
 
 # http://repo.or.cz/w/krb5dissect.git/blob_plain/HEAD:/ccache.txt
 class Header:
@@ -69,7 +66,6 @@ class Credential:
 		self.ticket = None
 		self.second_ticket = None
 		
-	
 		
 	def to_tgt(self):
 		enc_part = EncryptedData({'etype': 1, 'cipher': b''})
@@ -83,7 +79,6 @@ class Credential:
 		tgt_rep['enc-part'] = enc_part
 		
 		return tgt_rep
-		
 		
 		
 	def from_asn1(ticket, data):
@@ -323,12 +318,7 @@ class CCACHEOctetString:
 	def to_bytes(self):
 		t = self.length.to_bytes(4, byteorder='big', signed=False)
 		t += self.data
-		return t	
-	
-class CCACHEFile:
-	def __init__(self, filename):
-		self.filename = filename
-		self.ccache = None
+		return t
 		
 		
 class CCACHE:
@@ -339,9 +329,9 @@ class CCACHE:
 		self.primary_principal = None
 		self.credentials = []
 		
-		self.setup()
+		self.__setup()
 		
-	def setup(self):
+	def __setup(self):
 		self.file_format_version = 0x0504
 		self.headerlen = 1
 		header = Header()

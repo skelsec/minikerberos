@@ -28,41 +28,6 @@ class NegotiationToken(core.Choice):
 		
 ]
 """
-
-
-	
-class NAME_TYPE(core.Enumerated):
-	_map = {
-		0: 'UNKNOWN', #(0),	-- Name type not known
-		1: 'PRINCIPAL', #(1),	-- Just the name of the principal as in
-		2: 'SRV_INST', #(2),	-- Service and other unique instance (krbtgt)
-		3: 'SRV_HST', #(3),	-- Service with host name as instance
-		4: 'SRV_XHST', # (4),	-- Service with host as remaining components
-		5: 'UID', # (5),		-- Unique ID
-		6: 'X500_PRINCIPAL', #(6), -- PKINIT
-		7: 'SMTP_NAME', #(7),	-- Name in form of SMTP email name
-		10: 'ENTERPRISE_PRINCIPAL', #(10), -- Windows 2000 UPN
-		11: 'WELLKNOWN', #(11),	-- Wellknown
-		-130: 'ENT_PRINCIPAL_AND_ID', #(-130), -- Windows 2000 UPN and SID
-		-128: 'MS_PRINCIPAL', #(-128), -- NT 4 style name
-		-129: 'MS_PRINCIPAL_AND_ID', #(-129), -- NT style name and SID
-		-1200: 'NTLM', #(-1200) -- NTLM name, realm is domain
-	}
-	
-	
-class MESSAGE_TYPE(core.Enumerated):
-	_map = {
-        10: 'krb-as-req',
-        11: 'krb-as-rep',
-        12: 'krb-tgs-req',
-        13: 'krb-tgs-rep',
-        14: 'krb-ap-req',
-        15: 'krb-ap-rep',
-        20: 'krb-safe',
-        21: 'krb-priv',
-        22: 'krb-cred',
-        30: 'krb-error',
-	}
 	
 class PADATA_TYPE(core.Enumerated):
 	_map = {

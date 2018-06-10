@@ -1,5 +1,33 @@
 import enum
 
+class NAME_TYPE(enum.Enum):
+	UNKNOWN = 0     #(0),	-- Name type not known
+	PRINCIPAL = 1     #(1),	-- Just the name of the principal as in
+	SRV_INST = 2     #(2),	-- Service and other unique instance (krbtgt)
+	SRV_HST = 3     #(3),	-- Service with host name as instance
+	SRV_XHST = 4     # (4),	-- Service with host as remaining components
+	UID = 5     # (5),		-- Unique ID
+	X500_PRINCIPAL = 6     #(6), -- PKINIT
+	SMTP_NAME = 7     #(7),	-- Name in form of SMTP email name
+	ENTERPRISE_PRINCIPAL = 10    #(10), -- Windows 2000 UPN
+	WELLKNOWN  = 11    #(11),	-- Wellknown
+	ENT_PRINCIPAL_AND_ID  = -130  #(-130), -- Windows 2000 UPN and SID
+	MS_PRINCIPAL = -128  #(-128), -- NT 4 style name
+	MS_PRINCIPAL_AND_ID = -129  #(-129), -- NT style name and SID
+	NTLM = -1200 #(-1200) -- NTLM name, realm is domain
+
+class MESSAGE_TYPE(enum.Enum):
+	KRB_AS_REQ = 10 
+	KRB_AS_REP = 11 
+	KRB_TGS_REQ = 12 
+	KRB_TGS_REP = 13 
+	KRB_AP_REQ = 14 
+	KRB_AP_REP = 15 
+	KRB_SAFE = 20 
+	KRB_PRIV = 21 
+	KRB_CRED = 22 
+	KRB_ERROR = 30 
+
 class EncryptionType(enum.Enum):
 	NULL = 0#
 	DES_CBC_CRC = 1#

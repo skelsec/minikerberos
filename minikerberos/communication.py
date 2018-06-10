@@ -33,7 +33,7 @@ class KerberosSocket:
 		else:
 			raise Exception('Unknown socket type!')
 			
-	def sendrecv(self, data):
+	def sendrecv(self, data, throw = True):
 		self.create_soc()
 		if self.soc_type == KerberosSocketType.TCP:
 			length = len(data).to_bytes(4, byteorder = 'big', signed = False)
@@ -63,7 +63,7 @@ class KerberosSocket:
 						
 			
 		elif self.soc_type == KerberosSocketType.UDP:
-			self.soc.sendto(data)
+			self.soc.sendto(data, (self.dst_ip, self.dst_port))
 			while True:
 				buff, addr = self.soc.recvfrom(65535)
 				if addr[0] == self.dst_ip:
@@ -73,7 +73,10 @@ class KerberosSocket:
 					# continuing, but this might result in an infinite loop
 					continue
 		
-		return KerberosResponse.load(buff)
+		krb_message = KerberosResponse.load(buff)
+		if krb_message.name == 'KRB_ERROR' and throw == True:
+			raise KerberosError(krb_message)
+		return krb_message
 		
 		
 
@@ -98,13 +101,13 @@ class KerbrosComm:
 		now = datetime.datetime.utcnow() + datetime.timedelta(days=1)
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','proxiable']))
-		kdc_req_body['cname'] = PrincipalName({'name-type': 1, 'name-string': [self.usercreds.username]})
+		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
 		kdc_req_body['realm'] = self.usercreds.domain.upper()
-		kdc_req_body['sname'] = PrincipalName({'name-type': 1, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
+		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
 		kdc_req_body['till'] = now
 		kdc_req_body['rtime'] = now
 		kdc_req_body['nonce'] = secrets.randbits(31)
-		kdc_req_body['etype'] = [18]#SequenceOfEnctype([int(ENCTYPE('AES256_CTS_HMAC_SHA1_96'))])
+		kdc_req_body['etype'] = self.usercreds.get_supported_enctypes()
 		
 		pa_data_1 = {}
 		pa_data_1['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
@@ -112,19 +115,23 @@ class KerbrosComm:
 		
 		kdc_req = {}
 		kdc_req['pvno'] = krb5_pvno
-		kdc_req['msg-type'] = int(MESSAGE_TYPE('krb-as-req'))
+		kdc_req['msg-type'] = MESSAGE_TYPE.KRB_AS_REQ.value
 		kdc_req['padata'] = [pa_data_1]
 		kdc_req['req-body'] = KDC_REQ_BODY(kdc_req_body)
 		
 		req = AS_REQ(kdc_req)	
 		
-		rep = self.ksoc.sendrecv(req.dump())
+		rep = self.ksoc.sendrecv(req.dump(), throw = False)
 				
 		if rep.name != 'KRB_ERROR':	
 			raise Exception('IMPLEMENT!!!')
 			return
 		
+		if rep.native['error-code'] != KerberosErrorCode.KDC_ERR_PREAUTH_REQUIRED.value:
+			raise KerberosError(rep)
 		rep = rep.native
+		
+		
 		#now getting server's supported encryption methods
 		
 		supp_enc_methods = collections.OrderedDict()
@@ -141,19 +148,9 @@ class KerbrosComm:
 				for enc_info in enc_info_list.native:
 					supp_enc_methods[EncryptionType(enc_info['etype'])] = enc_info['salt']
 					logging.debug('Server supports encryption type %s with salt %s' % (EncryptionType(enc_info['etype']).name, enc_info['salt']))
-			
+		
 		#now to create an AS_REQ with encrypted timestamp for authentication
 		now = datetime.datetime.utcnow()
-		kdc_req_body = {}
-		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','proxiable']))
-		kdc_req_body['cname'] = PrincipalName({'name-type': 1, 'name-string': [self.usercreds.username]})
-		kdc_req_body['realm'] = self.usercreds.domain.upper()
-		kdc_req_body['sname'] = PrincipalName({'name-type': 1, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
-		kdc_req_body['till'] = now + datetime.timedelta(days=1)
-		kdc_req_body['rtime'] = now + datetime.timedelta(days=1)
-		kdc_req_body['nonce'] = secrets.randbits(31)
-		kdc_req_body['etype'] = [18]#SequenceOfEnctype([int(ENCTYPE('AES256_CTS_HMAC_SHA1_96'))])
-		
 		pa_data_1 = {}
 		pa_data_1['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
 		pa_data_1['padata-value'] = PA_PAC_REQUEST({'include-pac': True}).dump()
@@ -162,9 +159,11 @@ class KerbrosComm:
 		#creating timestamp asn1
 		timestamp = PA_ENC_TS_ENC({'patimestamp': now, 'pausec': now.microsecond}).dump()
 		
-		for supp_enc in supp_enc_methods:
-			cipher = _enctype_table[supp_enc.value]
-			key = Key(cipher.enctype, bytes.fromhex(self.usercreds.kerberos_key_aes_256))
+		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
+		logging.debug('Selecting common encryption type: %s' % supp_enc.name)
+		cipher = _enctype_table[supp_enc.value]
+		input(self.usercreds.get_key_for_enctype(supp_enc))
+		key = Key(cipher.enctype, self.usercreds.get_key_for_enctype(supp_enc))
 		enc_timestamp = cipher.encrypt(key, 1, timestamp, None)
 		self.kerberos_cipher = cipher
 		self.kerberos_cipher_type = supp_enc.value
@@ -173,9 +172,23 @@ class KerbrosComm:
 		pa_data_2['padata-type'] = int(PADATA_TYPE('ENC-TIMESTAMP'))
 		pa_data_2['padata-value'] = EncryptedData({'etype': supp_enc.value, 'cipher': enc_timestamp}).dump()
 		
+		
+		
+		
+		kdc_req_body = {}
+		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','proxiable']))
+		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
+		kdc_req_body['realm'] = self.usercreds.domain.upper()
+		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
+		kdc_req_body['till'] = now + datetime.timedelta(days=1)
+		kdc_req_body['rtime'] = now + datetime.timedelta(days=1)
+		kdc_req_body['nonce'] = secrets.randbits(31)
+		kdc_req_body['etype'] = [supp_enc.value] #selecting according to server's preferences
+		
+		
 		kdc_req = {}
 		kdc_req['pvno'] = krb5_pvno
-		kdc_req['msg-type'] = int(MESSAGE_TYPE('krb-as-req'))
+		kdc_req['msg-type'] = MESSAGE_TYPE.KRB_AS_REQ.value
 		kdc_req['padata'] = [pa_data_2,pa_data_1]
 		kdc_req['req-body'] = KDC_REQ_BODY(kdc_req_body)
 		
@@ -183,6 +196,7 @@ class KerbrosComm:
 		
 		rep = self.ksoc.sendrecv(req.dump())
 		rep = rep.native
+		input(rep)
 		self.kerberos_TGT = rep
 		
 		
@@ -199,7 +213,7 @@ class KerbrosComm:
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','renewable_ok', 'canonicalize']))
 		kdc_req_body['realm'] = self.target.domain.upper()
-		kdc_req_body['sname'] = PrincipalName({'name-type': 2, 'name-string': [self.target.service, self.target.hostname]})
+		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': [self.target.service, self.target.hostname]})
 		kdc_req_body['till'] = now + datetime.timedelta(days=1)
 		kdc_req_body['nonce'] = secrets.randbits(31)
 		kdc_req_body['etype'] = [self.kerberos_cipher_type]
@@ -207,7 +221,7 @@ class KerbrosComm:
 		authenticator_data = {}
 		authenticator_data['authenticator-vno'] = krb5_pvno
 		authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
-		authenticator_data['cname'] = PrincipalName({'name-type': 1, 'name-string': [self.usercreds.username]})
+		authenticator_data['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
 		authenticator_data['cusec'] = now.microsecond
 		authenticator_data['ctime'] = now
 		
@@ -215,7 +229,7 @@ class KerbrosComm:
 		
 		ap_req = {}
 		ap_req['pvno'] = krb5_pvno
-		ap_req['msg-type'] = int(MESSAGE_TYPE('krb-ap-req'))
+		ap_req['msg-type'] = MESSAGE_TYPE.KRB_AP_REQ.value
 		ap_req['ap-options'] = APOptions(set())
 		ap_req['ticket'] = Ticket(self.kerberos_TGT['ticket'])
 		ap_req['authenticator'] = EncryptedData({'etype': self.kerberos_cipher_type, 'cipher': authenticator_data_enc})
@@ -227,14 +241,11 @@ class KerbrosComm:
 		
 		kdc_req = {}
 		kdc_req['pvno'] = krb5_pvno
-		kdc_req['msg-type'] = int(MESSAGE_TYPE('krb-tgs-req'))
+		kdc_req['msg-type'] = MESSAGE_TYPE.KRB_TGS_REQ.value
 		kdc_req['padata'] = [pa_data_1]
 		kdc_req['req-body'] = KDC_REQ_BODY(kdc_req_body)
 		
 		req = TGS_REQ(kdc_req)
-		with open('tgs_wrong.asn1','wb') as f:
-			f.write(req.dump())
-		#print(req.native)
 		rep = self.ksoc.sendrecv(req.dump())
 		tgs = rep.native
 		
