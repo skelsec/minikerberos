@@ -1,7 +1,14 @@
+#!/usr/bin/env python3
+#
+# Author:
+#  Tamas Jos (@skelsec)
+#
+
 import secrets
 import datetime
 import hashlib
-from constants import *
+import collections
+from .constants import *
 
 
 # this is from impacket, a bit modified
@@ -11,7 +18,7 @@ def dt_to_kerbtime(dt):
 	return int((td.microseconds + (td.seconds + td.days * 24 * 3600) * 10**6) / 1e6)
 	
 
-class UserCredential:
+class User:
 	def __init__(self):
 		self.username = None
 		self.domain = None
@@ -74,18 +81,22 @@ class UserCredential:
 			raise Exception('Unsupported encryption type: %s' % etype.name)
 		
 	def get_supported_enctypes(self, as_int = True):
-		supp_enctypes = {}
+		supp_enctypes = collections.OrderedDict()
+		if self.kerberos_key_aes_256:
+			supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
+		if self.kerberos_key_aes_128:
+			supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
+		
 		if self.password:
 			supp_enctypes[EncryptionType.DES_CBC_CRC] = 1
 			supp_enctypes[EncryptionType.DES_CBC_MD4] = 1
 			supp_enctypes[EncryptionType.DES_CBC_MD5] = 1
 			supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
+			supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
+		
 		if self.password or self.NT:
 			supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
-		if self.kerberos_key_aes_256:
-			supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
-		if self.kerberos_key_aes_128:
-			supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
+		
 		if self.kerberos_key_des:
 			supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
 		

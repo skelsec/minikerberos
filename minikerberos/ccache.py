@@ -7,8 +7,11 @@
 import os
 import datetime
 import glob
-from asn1_structs import *
-from common import dt_to_kerbtime
+import logging
+import hashlib
+from .asn1_structs import *
+from .common import dt_to_kerbtime
+from.constants import *
 from asn1crypto import core
 
 
@@ -80,14 +83,43 @@ class Credential:
 		
 		return tgt_rep
 		
+	def to_kirbi(self):
+		filename = '%s@%s_%s' % (self.client.to_string() , self.server.to_string(), hashlib.sha1(self.ticket.to_asn1()).hexdigest()[:8])
+		krbcredinfo = {}
+		krbcredinfo['key'] = EncryptionKey(self.key.to_asn1())
+		krbcredinfo['prealm'] = self.client.realm.to_string()
+		krbcredinfo['pname'] = self.client.to_asn1()[0]
+		krbcredinfo['flags'] = core.IntegerBitString(self.tktflags).cast(TicketFlags)
+		if self.time.authtime != 0: #this parameter is not mandatory, and most of the time not present
+			krbcredinfo['authtime'] = datetime.datetime.fromtimestamp(self.time.authtime)
+		krbcredinfo['starttime'] = datetime.datetime.fromtimestamp(self.time.starttime)
+		krbcredinfo['endtime'] = datetime.datetime.fromtimestamp(self.time.endtime)
+		krbcredinfo['renew-till'] = datetime.datetime.fromtimestamp(self.time.renew_till)
+		krbcredinfo['srealm'] = self.server.realm.to_string()
+		krbcredinfo['sname'] = self.server.to_asn1()[0]
+		
+		enc_krbcred = {}
+		enc_krbcred['ticket-info'] = [KrbCredInfo(krbcredinfo)]
+		
+		krbcred = {}
+		krbcred['pvno'] = krb5_pvno
+		krbcred['msg-type'] = MESSAGE_TYPE.KRB_CRED.value
+		krbcred['tickets'] = [Ticket.load(self.ticket.to_asn1())]
+		krbcred['enc-part'] = EncryptedData({'etype': EncryptionType.NULL.value, 'cipher': EncKrbCredPart(enc_krbcred).dump()})
+	
+	
+	
+		kirbi = KRBCRED(krbcred)
+		return kirbi, filename
+
 		
 	def from_asn1(ticket, data):
 		###
 		# data  = KrbCredInfo 
 		###
 		c = Credential()
-		c.client = Principal.from_asn1(data['pname'], data['prealm'])
-		c.server = Principal.from_asn1(data['sname'], data['srealm'])
+		c.client = CCACHEPrincipal.from_asn1(data['pname'], data['prealm'])
+		c.server = CCACHEPrincipal.from_asn1(data['sname'], data['srealm'])
 		c.key = Keyblock.from_asn1(data['key'])
 		c.is_skey = 0 #not sure!
 		
@@ -100,9 +132,10 @@ class Credential:
 		
 	def parse(reader):
 		c = Credential()
-		c.client = Principal.parse(reader)
-		c.server = Principal.parse(reader)
+		c.client = CCACHEPrincipal.parse(reader)
+		c.server = CCACHEPrincipal.parse(reader)
 		c.key = Keyblock.parse(reader)
+		c.time = Times.parse(reader)
 		c.is_skey = int.from_bytes(reader.read(1), byteorder='big', signed=False)
 		c.tktflags = int.from_bytes(reader.read(4), byteorder='little', signed=False)
 		c.num_address = int.from_bytes(reader.read(4), byteorder='big', signed=False)
@@ -145,10 +178,15 @@ class Keyblock:
 		k.etype = 0 # not sure
 		k.keylen = len(data['keyvalue'])
 		k.keyvalue = data['keyvalue']
-		print(k.keylen)
-		print(k.keyvalue.hex())
 		
 		return k
+		
+	def to_asn1(self):
+		t = {}
+		t['keytype'] = self.keytype
+		t['keyvalue'] = self.keyvalue
+		
+		return t
 		
 	def parse(reader):
 		k = Keyblock()
@@ -240,7 +278,7 @@ class Authdata:
 		t += self.authdata.to_bytes()
 		return t
 		
-class Principal:
+class CCACHEPrincipal:
 	def __init__(self):
 		self.name_type = None
 		self.num_components = None
@@ -248,7 +286,7 @@ class Principal:
 		self.components = []
 		
 	def from_asn1(principal, realm):
-		p = Principal()
+		p = CCACHEPrincipal()
 		p.name_type = principal['name-type']
 		p.num_components = len(principal['name-string'])
 		p.realm = CCACHEOctetString.from_string(realm)
@@ -257,14 +295,15 @@ class Principal:
 			
 		return p
 		
+	def to_string(self):
+		return '-'.join([c.to_string() for c in self.components])
+		
 	def to_asn1(self):
-		t = {}
-		t['name_type'] = self.name_type
-		t['name-string'] = [ cos.data for cos in self.components ]		
-		return t, self.realm
+		t = {'name-type': self.name_type, 'name-string': [name.to_string() for name in self.components]}
+		return t, self.realm.to_string()		
 		
 	def parse(reader):
-		p = Principal()
+		p = CCACHEPrincipal()
 		p.name_type = int.from_bytes(reader.read(4), byteorder='big', signed=False)
 		p.num_components = int.from_bytes(reader.read(4), byteorder='big', signed=False)
 		p.realm = CCACHEOctetString.parse(reader)
@@ -293,6 +332,9 @@ class CCACHEOctetString:
 		
 	def to_asn1(self):
 		return self.data
+		
+	def to_string(self):
+		return self.data.decode()
 		
 	def from_string(data):
 		o = CCACHEOctetString()
@@ -350,10 +392,10 @@ class CCACHE:
 		override_pp: bool to determine if client principal should be used as the primary principal for the ccache file
 		"""
 		c = Credential()
-		c.client = Principal.from_asn1(as_rep['cname'], as_rep['crealm'])
+		c.client = CCACHEPrincipal.from_asn1(as_rep['cname'], as_rep['crealm'])
 		if override_pp == True:
 			self.primary_principal = c.client
-		c.server = Principal.from_asn1(enc_as_rep_part['sname'], enc_as_rep_part['srealm'])
+		c.server = CCACHEPrincipal.from_asn1(enc_as_rep_part['sname'], enc_as_rep_part['srealm'])
 		c.time = Times.from_asn1(enc_as_rep_part)
 		c.key = Keyblock.from_asn1(enc_as_rep_part['key'])
 		c.is_skey = 0 #not sure!
@@ -376,10 +418,10 @@ class CCACHE:
 		override_pp: bool to determine if client principal should be used as the primary principal for the ccache file
 		"""
 		c = Credential()
-		c.client = Principal.from_asn1(tgs_rep['cname'], tgs_rep['crealm'])
+		c.client = CCACHEPrincipal.from_asn1(tgs_rep['cname'], tgs_rep['crealm'])
 		if override_pp == True:
 			self.primary_principal = c.client
-		c.server = Principal.from_asn1(enc_tgs_rep_part['sname'], enc_tgs_rep_part['srealm'])
+		c.server = CCACHEPrincipal.from_asn1(enc_tgs_rep_part['sname'], enc_tgs_rep_part['srealm'])
 		c.time = Times.from_asn1(enc_tgs_rep_part)
 		c.key = Keyblock.from_asn1(enc_tgs_rep_part['key'])
 		c.is_skey = 0 #not sure!
@@ -392,55 +434,36 @@ class CCACHE:
 		
 		self.credentials.append(c)
 	
-	"""
-	class KrbCredInfo(core.Sequence):
-	_fields = [
-		('key', EncryptionKey, {'tag_type': TAG, 'tag': 0}),
-		('prealm', Realm, {'tag_type': TAG, 'tag': 1, 'optional': True}),
-		('pname', PrincipalName, {'tag_type': TAG, 'tag': 2, 'optional': True}),
-		('flags', TicketFlags , {'tag_type': TAG, 'tag': 3, 'optional': True}),
-		('authtime', KerberosTime , {'tag_type': TAG, 'tag': 4, 'optional': True}),
-		('starttime', KerberosTime , {'tag_type': TAG, 'tag': 5, 'optional': True}),
-		('endtime', KerberosTime , {'tag_type': TAG, 'tag': 6, 'optional': True}),
-		('renew-till', KerberosTime , {'tag_type': TAG, 'tag': 7, 'optional': True}),
-		('srealm', Realm , {'tag_type': TAG, 'tag': 8, 'optional': True}),
-		('sname', PrincipalName , {'tag_type': TAG, 'tag': 9, 'optional': True}),
-		('caddr', HostAddresses , {'tag_type': TAG, 'tag': 10, 'optional': True}),
-	]
-	
-	class EncKrbCredPart(core.Sequence):
-	explicit = (APPLICATION, 29)
-	_fields = [
-		('ticket-info', SequenceOfKrbCredInfo, {'tag_type': TAG, 'tag': 0}),
-		('nonce', krb5int32, {'tag_type': TAG, 'tag': 1, 'optional': True}),
-		('timestamp', KerberosTime , {'tag_type': TAG, 'tag': 2, 'optional': True}),
-		('usec', krb5int32 , {'tag_type': TAG, 'tag': 3, 'optional': True}),
-		('s-address', HostAddress , {'tag_type': TAG, 'tag': 4, 'optional': True}),
-		('r-address', HostAddress , {'tag_type': TAG, 'tag': 5, 'optional': True}),
-	]
-	
-	
-	class KRBCRED(core.Sequence):
-	explicit = (APPLICATION, 22)
-	
-	_fields = [
-		('pvno', core.Integer, {'tag_type': TAG, 'tag': 0}),
-		('msg-type', core.Integer, {'tag_type': TAG, 'tag': 1}),
-		('tickets', SequenceOfTicket, {'tag_type': TAG, 'tag': 2}),
-		('enc-part', EncryptedData , {'tag_type': TAG, 'tag': 3}),
-	
-	]
-	"""
 		
-	def add_kirbi(self, krbcred, override_pp = True):
+	def add_kirbi(self, krbcred, override_pp = True, include_expired = False):
 		c = Credential()
 		enc_credinfo = EncKrbCredPart.load(krbcred['enc-part']['cipher']).native
 		ticket_info = enc_credinfo['ticket-info'][0]
 		
-		c.client = Principal.from_asn1(ticket_info['pname'], ticket_info['prealm'])
+		"""
+		if ticket_info['endtime'] < datetime.datetime.now(datetime.timezone.utc):
+			if include_expired == True:
+				logging.debug('This ticket has most likely expired, but include_expired is forcing me to add it to cache! This can cause problems!')
+			else:
+				logging.debug('This ticket has most likely expired, skipping')
+				return
+		"""
+		
+		c.client = CCACHEPrincipal.from_asn1(ticket_info['pname'], ticket_info['prealm'])
 		if override_pp == True:
 			self.primary_principal = c.client
-		c.server = Principal.from_asn1(ticket_info['sname'], ticket_info['srealm'])
+		
+		#yaaaaay 4 additional weirdness!!!!
+		#if sname name-string contains a realm as well htne impacket will crash miserably :(
+		if len(ticket_info['sname']['name-string']) > 2 and ticket_info['sname']['name-string'][-1].upper() == ticket_info['srealm'].upper():
+			logging.debug('SNAME contains the realm as well, trimming it')
+			t = ticket_info['sname']
+			t['name-string'] = t['name-string'][:-1]
+			c.server = CCACHEPrincipal.from_asn1(t, ticket_info['srealm'])
+		else:
+			c.server = CCACHEPrincipal.from_asn1(ticket_info['sname'], ticket_info['srealm'])
+		
+		
 		c.time = Times.from_asn1(ticket_info)
 		c.key = Keyblock.from_asn1(ticket_info['key'])
 		c.is_skey = 0 #not sure!
@@ -451,7 +474,6 @@ class CCACHE:
 		c.ticket = CCACHEOctetString.from_asn1(Ticket(krbcred['tickets'][0]).dump()) #kirbi only stores one ticket per file
 		c.second_ticket = CCACHEOctetString.empty()
 		
-		input('server: %s' % c.server)
 		self.credentials.append(c)
 		
 		
@@ -461,24 +483,20 @@ class CCACHE:
 		cc.add_kirbi(kirbi)		
 		return cc
 		
-	def to_kirbi(self):
-		#TODO
-		pass
-		
 		
 	def parse(reader):
-		c = CCACHEFile()
+		c = CCACHE()
 		c.file_format_version = int.from_bytes(reader.read(2), byteorder='big', signed=False)
 		c.headerlen = int.from_bytes(reader.read(2), byteorder='big', signed=False)
 		for i in range(c.headerlen):
 			c.headers.append(Header.parse(reader))
-		c.primary_principal = Principal.parse(reader)
+		c.primary_principal = CCACHEPrincipal.parse(reader)
 		pos = reader.tell()
 		reader.seek(-1,2)
 		eof = reader.tell()
 		reader.seek(pos,0)
-		while reader.tell() != eof:
-			self.credentials.append(Credential.parse(reader))
+		while reader.tell() < eof:
+			c.credentials.append(Credential.parse(reader))
 		
 		return c
 		
@@ -501,26 +519,46 @@ class CCACHE:
 		return CCACHE.from_kirbi(kirbidata)
 		
 	def from_kirbidir(directory_path):
+		"""
+		Iterates trough all .kirbi files in a given directory and converts all of them into one CCACHE object
+		"""
 		cc = CCACHE()
 		dir_path = os.path.join(os.path.abspath(directory_path), '*.kirbi')
 		for filename in glob.glob(dir_path):
 			with open(filename, 'rb') as f:
+				#print(filename)
 				kirbidata = f.read()
 				kirbi = KRBCRED.load(kirbidata).native
 				cc.add_kirbi(kirbi)
 		
 		return cc
 		
-	def to_kirbifile(self, outfilename):
-		kf_abs = os.path.abspath(outfilename)
-		with open(kf_abs, 'wb') as o:
-			o.write(self.to_kirbi())
+	def to_kirbidir(self, directory_path):
+		"""
+		Converts all credential object in the CCACHE object to the kirbi file format used by mimikatz.
+		The kirbi file format supports one credential per file, so prepare for a lot of files being generated.
+		
+		directory_path: str the directory to write the kirbi files to
+		"""
+		kf_abs = os.path.abspath(directory_path)
+		for cred in self.credentials:
+			kirbi, filename = cred.to_kirbi()
+			filename = '%s.kirbi' % filename.replace('..','!')
+			filepath = os.path.join(kf_abs, filename)
+			with open(filepath, 'wb') as o:
+				o.write(kirbi.dump())
 		
 	def from_file(filename):
+		"""
+		Parses the ccache file and returns a CCACHE object
+		"""
 		with open(filename, 'rb') as f:
-			return CCACHEFile.parse(f)
+			return CCACHE.parse(f)
 			
 	def to_file(self, filename):
+		"""
+		Writes the contents of the CCACHE object to a file
+		"""
 		with open(filename, 'wb') as f:
 			f.write(self.to_bytes())
 		

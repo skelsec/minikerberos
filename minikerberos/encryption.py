@@ -39,6 +39,7 @@
 #   - Camellia not supported by PyCrypto
 #   - Cipher state only needed for kcmd suite
 #   - Nonstandard enctypes and cksumtypes like des-hmac-sha1
+# Original code was taken from impacket, ported to python3 by Tamas Jos (@skelsec)
 
 from struct import pack, unpack
 from binascii import unhexlify
@@ -52,11 +53,11 @@ import hmac as HMAC
 import hashlib
 from hashlib import md5 as MD5
 from hashlib import sha1 as SHA
-from crypto.PBKDF2.pbkdf2 import pbkdf2 as PBKDF2
-from crypto.AES import *
-from crypto.DES import DES3, DES_CBC, DES_ECB
-from crypto.RC4 import RC4 as ARC4
-from crypto.DES import DES
+from .crypto.PBKDF2.pbkdf2 import pbkdf2 as PBKDF2
+from .crypto.AES import *
+from .crypto.DES import DES3, DES_CBC, DES_ECB
+from .crypto.RC4 import RC4 as ARC4
+from .crypto.DES import DES
 
 
 def get_random_bytes(lenBytes):

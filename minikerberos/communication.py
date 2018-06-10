@@ -1,14 +1,22 @@
-from asn1_structs import *
-from kerberoserror import *
-from constants import *
-from common import *
-from ccache import *
-from encryption import _enctype_table, Key
+#!/usr/bin/env python3
+#
+# Author:
+#  Tamas Jos (@skelsec)
+#
+
 import collections
 import datetime
 import secrets
 import socket
 import logging
+
+from .asn1_structs import *
+from .kerberoserror import *
+from .constants import *
+from .common import *
+from .ccache import *
+from .encryption import _enctype_table, Key
+
 
 class KerberosSocketType(enum.Enum):
 	UDP = enum.auto()
@@ -18,8 +26,11 @@ class KerberosSocket:
 	def __init__(self, ip, port = 88, soc_type = KerberosSocketType.TCP):
 		self.soc_type = soc_type
 		self.dst_ip = ip
-		self.dst_port = port
+		self.dst_port = int(port)
 		self.soc = None
+		
+	def get_addr_str(self):
+		return '%s:%d' % (self.dst_ip, self.dst_port)
 		
 	def create_soc(self):
 		if self.soc_type == KerberosSocketType.TCP:
@@ -98,14 +109,15 @@ class KerbrosComm:
 			2. Depending on the response (either error or AS_REP with TGT) we either send another AS_REQ with the encrypted data or return the TGT (or fail miserably)
 			3. PROFIT
 		"""
-		now = datetime.datetime.utcnow() + datetime.timedelta(days=1)
+		logging.debug('Generating initial TGT without authentication data')
+		now = datetime.datetime.utcnow()
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','proxiable']))
 		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
 		kdc_req_body['realm'] = self.usercreds.domain.upper()
 		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
-		kdc_req_body['till'] = now
-		kdc_req_body['rtime'] = now
+		kdc_req_body['till'] = now + datetime.timedelta(days=1)
+		kdc_req_body['rtime'] = now + datetime.timedelta(days=1)
 		kdc_req_body['nonce'] = secrets.randbits(31)
 		kdc_req_body['etype'] = self.usercreds.get_supported_enctypes()
 		
@@ -121,6 +133,7 @@ class KerbrosComm:
 		
 		req = AS_REQ(kdc_req)	
 		
+		logging.debug('Sending initial TGT to %s' % self.ksoc.get_addr_str())
 		rep = self.ksoc.sendrecv(req.dump(), throw = False)
 				
 		if rep.name != 'KRB_ERROR':	
@@ -130,7 +143,7 @@ class KerbrosComm:
 		if rep.native['error-code'] != KerberosErrorCode.KDC_ERR_PREAUTH_REQUIRED.value:
 			raise KerberosError(rep)
 		rep = rep.native
-		
+		logging.debug('Got reply from server, asikg to provide auth data')
 		
 		#now getting server's supported encryption methods
 		
@@ -149,6 +162,7 @@ class KerbrosComm:
 					supp_enc_methods[EncryptionType(enc_info['etype'])] = enc_info['salt']
 					logging.debug('Server supports encryption type %s with salt %s' % (EncryptionType(enc_info['etype']).name, enc_info['salt']))
 		
+		logging.debug('Constructing TGT request with auth data')
 		#now to create an AS_REQ with encrypted timestamp for authentication
 		now = datetime.datetime.utcnow()
 		pa_data_1 = {}
@@ -162,7 +176,6 @@ class KerbrosComm:
 		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
 		logging.debug('Selecting common encryption type: %s' % supp_enc.name)
 		cipher = _enctype_table[supp_enc.value]
-		input(self.usercreds.get_key_for_enctype(supp_enc))
 		key = Key(cipher.enctype, self.usercreds.get_key_for_enctype(supp_enc))
 		enc_timestamp = cipher.encrypt(key, 1, timestamp, None)
 		self.kerberos_cipher = cipher
@@ -171,7 +184,6 @@ class KerbrosComm:
 		pa_data_2 = {}
 		pa_data_2['padata-type'] = int(PADATA_TYPE('ENC-TIMESTAMP'))
 		pa_data_2['padata-value'] = EncryptedData({'etype': supp_enc.value, 'cipher': enc_timestamp}).dump()
-		
 		
 		
 		
@@ -194,21 +206,25 @@ class KerbrosComm:
 		
 		req = AS_REQ(kdc_req)
 		
+		logging.debug('Sending TGT request to server')
 		rep = self.ksoc.sendrecv(req.dump())
+		logging.debug('Got valid TGT response from server')
 		rep = rep.native
-		input(rep)
 		self.kerberos_TGT = rep
 		
 		
 		cipherText = rep['enc-part']['cipher']
 		temp = cipher.decrypt(key, 3, cipherText)
-		plainText = EncASRepPart.load(temp).native
-		print(plainText)
-		self.kerberos_session_key = Key(cipher.enctype, plainText['key']['keyvalue'])
-		self.ccache.add_tgt(self.kerberos_TGT, plainText)
+		enc_as_rep_part = EncASRepPart.load(temp).native
+		self.kerberos_session_key = Key(cipher.enctype, enc_as_rep_part['key']['keyvalue'])
+		self.ccache.add_tgt(self.kerberos_TGT, enc_as_rep_part)
+		logging.debug('Got valid TGT')
+		
+		return 
 		
 	def get_TGS(self):
 		#construct tgs_req
+		logging.debug('Constructing TGS request')
 		now = datetime.datetime.utcnow() 
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','renewable_ok', 'canonicalize']))
@@ -246,17 +262,18 @@ class KerbrosComm:
 		kdc_req['req-body'] = KDC_REQ_BODY(kdc_req_body)
 		
 		req = TGS_REQ(kdc_req)
+		logging.debug('Constructing TGS request to server')
 		rep = self.ksoc.sendrecv(req.dump())
+		logging.debug('Got TGS reply, decrypting...')
 		tgs = rep.native
 		
 		encTGSRepPart = EncTGSRepPart.load(self.kerberos_cipher.decrypt(self.kerberos_session_key, 8, tgs['enc-part']['cipher'])).native
 		self.kerberos_session_key = Key(encTGSRepPart['key']['keytype'], encTGSRepPart['key']['keyvalue'])
 		self.kerberos_cipher = _enctype_table[encTGSRepPart['key']['keytype']]
 		
-		print(tgs['ticket']['realm'])
-		print(tgs['ticket']['sname'])
 		self.ccache.add_tgs(tgs, encTGSRepPart)
-		
+		logging.debug('Got valid TGS reply')
+		return tgs, encTGSRepPart
 		
 		
 		
@@ -266,7 +283,7 @@ class KerbrosComm:
 if __name__ == '__main__':
 	logging.basicConfig(level=logging.DEBUG)
 	
-	ccred = UserCredential()
+	ccred = User()
 	ccred.username = 'victim'
 	ccred.domain = 'TEST.corp'
 	ccred.password = 'Almaalmaalma!1'
