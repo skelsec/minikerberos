@@ -32,8 +32,14 @@ class Header:
 		
 	def to_bytes(self):
 		t =  self.tag.to_bytes(2, byteorder='big', signed=False)
-		t += self.taglen.to_bytes(2, byteorder='big', signed=False)
+		t += len(self.tagdata).to_bytes(2, byteorder='big', signed=False)
 		t += self.tagdata
+		return t
+		
+	def __str__(self):
+		t = 'tag: %s\n' % self.tag
+		t += 'taglen: %s\n' % self.taglen
+		t += 'tagdata: %s\n' % self.tagdata
 		return t
 
 class DateTime:
@@ -147,6 +153,19 @@ class Credential:
 		c.ticket = CCACHEOctetString.parse(reader)
 		c.second_ticket = CCACHEOctetString.parse(reader)
 		return c
+		
+	def summary_header():
+		return ['client','server','starttime','endtime','renew-till']
+		
+	def summary(self):
+		return [ 
+			'%s@%s' % 	(self.client.to_string(),self.client.realm.to_string()), 
+			'%s@%s' % 	(self.server.to_string(), self.server.realm.to_string()),
+			datetime.datetime.fromtimestamp(self.time.starttime).isoformat(),
+			datetime.datetime.fromtimestamp(self.time.endtime).isoformat(),
+			datetime.datetime.fromtimestamp(self.time.renew_till).isoformat(),
+		
+		]
 		
 	def to_bytes(self):
 		t =  self.client.to_bytes()
@@ -294,6 +313,16 @@ class CCACHEPrincipal:
 			p.components.append(CCACHEOctetString.from_asn1(comp))
 			
 		return p
+	
+	def dummy():
+		p = CCACHEPrincipal()
+		p.name_type = 1
+		p.num_components = 1
+		p.realm = CCACHEOctetString.from_string('kerbi.corp')
+		for i in range(1):
+			p.components.append(CCACHEOctetString.from_string('kerbi'))
+			
+		return p
 		
 	def to_string(self):
 		return '-'.join([c.to_string() for c in self.components])
@@ -313,7 +342,7 @@ class CCACHEPrincipal:
 		
 	def to_bytes(self):
 		t = self.name_type.to_bytes(4, byteorder='big', signed=False)
-		t += self.num_components.to_bytes(4, byteorder='big', signed=False)
+		t += len(self.components).to_bytes(4, byteorder='big', signed=False)
 		t += self.realm.to_bytes()
 		for com in self.components:
 			t += com.to_bytes()
@@ -338,8 +367,8 @@ class CCACHEOctetString:
 		
 	def from_string(data):
 		o = CCACHEOctetString()
-		o.length = len(data)
 		o.data = data.encode()
+		o.length = len(o.data)
 		return o
 		
 	def from_asn1(data):
@@ -358,20 +387,27 @@ class CCACHEOctetString:
 		return o
 		
 	def to_bytes(self):
-		t = self.length.to_bytes(4, byteorder='big', signed=False)
+		if isinstance(self.data,str):
+			self.data = self.data.encode()
+			self.length = len(self.data)
+		t = len(self.data).to_bytes(4, byteorder='big', signed=False)
 		t += self.data
 		return t
 		
 		
 class CCACHE:
-	def __init__(self):
+	"""
+	As the header is rarely used -mostly static- you'd need to init this object with empty = True to get an object without header already present
+	"""
+	def __init__(self, empty = False):
 		self.file_format_version = None #0x0504
 		self.headerlen = None
 		self.headers = []
 		self.primary_principal = None
 		self.credentials = []
 		
-		self.__setup()
+		if empty == False:
+			self.__setup()
 		
 	def __setup(self):
 		self.file_format_version = 0x0504
@@ -381,6 +417,16 @@ class CCACHE:
 		header.taglen = 8
 		header.tagdata = b'\xff\xff\xff\xff\x00\x00\x00\x00'
 		self.headers.append(header)
+		self.primary_principal = CCACHEPrincipal.dummy()
+		
+	def __str__(self):
+		t = '== CCACHE ==\n'
+		t+= 'file_format_version : %s\n' % self.file_format_version
+		t+= 'headerlen : %s\n' % self.headerlen
+		for header in self.headers:
+			t+= '%s\n' % header
+		t+= 'primary_principal : %s\n' % self.primary_principal
+		return t
 		
 	def add_tgt(self, as_rep, enc_as_rep_part, override_pp = True): #from AS_REP
 		"""
@@ -485,7 +531,7 @@ class CCACHE:
 		
 		
 	def parse(reader):
-		c = CCACHE()
+		c = CCACHE(True)
 		c.file_format_version = int.from_bytes(reader.read(2), byteorder='big', signed=False)
 		c.headerlen = int.from_bytes(reader.read(2), byteorder='big', signed=False)
 		for i in range(c.headerlen):
@@ -502,7 +548,7 @@ class CCACHE:
 		
 	def to_bytes(self):
 		t = self.file_format_version.to_bytes(2, byteorder='big', signed=False)
-		t += self.headerlen.to_bytes(2, byteorder='big', signed=False)
+		t += len(self.headers).to_bytes(2, byteorder='big', signed=False)
 		for header in self.headers:
 			t += header.to_bytes()
 		t += self.primary_principal.to_bytes()
