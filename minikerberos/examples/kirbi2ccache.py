@@ -7,7 +7,7 @@ import os
 import logging
 from minikerberos.ccache import CCACHE
 
-if __name__ == '__main__':
+def main():
 	import argparse
 	
 	parser = argparse.ArgumentParser(description='Convert kirbi file(s) to a single ccache file')
@@ -36,3 +36,6 @@ if __name__ == '__main__':
 		cc.to_file(args.ccache)
 		
 	logging.info('Done!')
+
+if __name__ == '__main__':
+	main()

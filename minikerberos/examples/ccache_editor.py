@@ -10,8 +10,7 @@ import ntpath
 from minikerberos.ccache import CCACHE, Credential
 from minikerberos.common import print_table
 
-
-if __name__ == '__main__':
+def main():
 	import argparse
 
 	parser = argparse.ArgumentParser(description='Tool to manipulate CCACHE files')
@@ -60,7 +59,5 @@ if __name__ == '__main__':
 		logging.info('Writing edited file to %s' % output_filename)
 		temp_cc.to_file(output_filename)
 
-		
-		
-		
-		
+if __name__ == '__main__':
+	main()

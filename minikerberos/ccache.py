@@ -100,7 +100,8 @@ class Credential:
 			krbcredinfo['authtime'] = datetime.datetime.fromtimestamp(self.time.authtime)
 		krbcredinfo['starttime'] = datetime.datetime.fromtimestamp(self.time.starttime)
 		krbcredinfo['endtime'] = datetime.datetime.fromtimestamp(self.time.endtime)
-		krbcredinfo['renew-till'] = datetime.datetime.fromtimestamp(self.time.renew_till)
+		if self.time.renew_till != 0: #this parameter is not mandatory, and sometimes it's not present
+			krbcredinfo['renew-till'] = datetime.datetime.fromtimestamp(self.time.authtime)
 		krbcredinfo['srealm'] = self.server.realm.to_string()
 		krbcredinfo['sname'] = self.server.to_asn1()[0]
 		
@@ -161,9 +162,9 @@ class Credential:
 		return [ 
 			'%s@%s' % 	(self.client.to_string(),self.client.realm.to_string()), 
 			'%s@%s' % 	(self.server.to_string(), self.server.realm.to_string()),
-			datetime.datetime.fromtimestamp(self.time.starttime).isoformat(),
-			datetime.datetime.fromtimestamp(self.time.endtime).isoformat(),
-			datetime.datetime.fromtimestamp(self.time.renew_till).isoformat(),
+			datetime.datetime.fromtimestamp(self.time.starttime).isoformat() if self.time.starttime != 0 else 'N/A',
+			datetime.datetime.fromtimestamp(self.time.endtime).isoformat() if self.time.endtime != 0 else 'N/A',
+			datetime.datetime.fromtimestamp(self.time.renew_till).isoformat() if self.time.renew_till != 0 else 'N/A',
 		
 		]
 		
