@@ -86,7 +86,7 @@ if __name__ == '__main__':
 	
 	ksoc = KerberosSocket(dc_ip, soc_type = KerberosSocketType.UDP if args.u == True else KerberosSocketType.TCP)
 	
-	kc = KerbrosComm(ccred, None, ksoc)
+	kc = KerbrosComm(ccred, ksoc)
 	tgt = kc.get_TGT()
 	kc.ccache.to_file(args.ccache)	
 	logging.info('Done!')

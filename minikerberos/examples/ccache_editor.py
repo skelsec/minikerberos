@@ -17,7 +17,13 @@ def main():
 	subparsers = parser.add_subparsers(help = 'commands')
 	subparsers.required = True
 	subparsers.dest = 'command'
+	
+	roast_group = subparsers.add_parser('roast', help='Lists all tickets in hashcat-friendly format')
+	roast_group.add_argument('-a', '--allhash', action='store_true', help='Process all tickets, regardless of enctype')
+	roast_group.add_argument('-o', '--outfile', help='Output hash file name')
+	
 	list_group = subparsers.add_parser('list', help='List all tickets in the file')
+	
 	delete_group = subparsers.add_parser('del', help = 'Delete ticket(s) from file, store the new ccache file in a specified filename, or an automatically generated one')
 	delete_group.add_argument('-o', '--outfile', help='Output ccache file name')
 	delete_group.add_argument('-i','--id', type=int, action='append', help='Ticket ID to delete', required=True)
@@ -38,6 +44,15 @@ def main():
 			i += 1
 		print()	#this line intentionally left blank
 		print_table(table)
+
+	elif args.command == 'roast':
+		if args.outfile:
+			with open(args.outfile, 'wb') as f:
+				for h in cc.get_hashes(all_hashes = args.allhash):
+					f.write(h.encode() + b'\r\n')
+		else:
+			for h in cc.get_hashes(all_hashes = args.allhash):
+				print(h)
 	
 	elif args.command == 'del':
 		#delete

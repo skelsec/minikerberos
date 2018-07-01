@@ -92,16 +92,30 @@ class KerberosSocket:
 		
 
 class KerbrosComm:
-	def __init__(self,ccred, target, ksoc):
+	def __init__(self,ccred, ksoc, ccache = None):
 		self.usercreds = ccred
-		self.target = target
 		self.ksoc = ksoc
+		self.user_ccache = ccache
 		self.ccache = CCACHE()
 		self.kerberos_session_key = None
 		self.kerberos_TGT = None
 		self.kerberos_cipher = None
 		self.kerberos_cipher_type = None
 		
+	@staticmethod
+	def from_tgt(ksoc, tgt, key):
+		"""
+		Sets up the kerberos object from tgt and the session key.
+		Use this function when pulling the TGT from ccache file.
+		"""
+		kc = KerbrosComm(None, ksoc)
+		kc.kerberos_TGT = tgt
+		
+		kc.kerberos_cipher_type = key['keytype']
+		kc.kerberos_session_key = Key(kc.kerberos_cipher_type, key['keyvalue']) 
+		kc.kerberos_cipher = _enctype_table[kc.kerberos_cipher_type]
+		return kc
+
 	def get_TGT(self):
 		"""
 		Steps performed:
@@ -136,7 +150,8 @@ class KerbrosComm:
 		logging.debug('Sending initial TGT to %s' % self.ksoc.get_addr_str())
 		rep = self.ksoc.sendrecv(req.dump(), throw = False)
 				
-		if rep.name != 'KRB_ERROR':	
+		if rep.name != 'KRB_ERROR':
+			#this user doesn't need to provide auth data
 			raise Exception('IMPLEMENT!!!')
 			return
 		
@@ -222,22 +237,32 @@ class KerbrosComm:
 		
 		return 
 		
-	def get_TGS(self):
+	def get_TGS(self, spn_user, override_etype = None):
+		"""
+		Requests a TGS ticket for the specified user.
+		Retruns the TGS ticket, end the decrpyted encTGSRepPart.
+
+		spn_user: KerberosTarget: the service user you want to get TGS for.
+		override_etype: None or list of etype values (int) Used mostly for kerberoasting, will override the AP_REQ supported etype values (which is derived from the TGT) to be able to recieve whatever tgs tiecket 
+		"""
 		#construct tgs_req
-		logging.debug('Constructing TGS request')
+		logging.debug('Constructing TGS request for user %s' % spn_user.get_formatted_pname())
 		now = datetime.datetime.utcnow() 
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','renewable_ok', 'canonicalize']))
-		kdc_req_body['realm'] = self.target.domain.upper()
-		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': [self.target.service, self.target.hostname]})
+		kdc_req_body['realm'] = spn_user.domain.upper()
+		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': spn_user.get_principalname()})
 		kdc_req_body['till'] = now + datetime.timedelta(days=1)
 		kdc_req_body['nonce'] = secrets.randbits(31)
-		kdc_req_body['etype'] = [self.kerberos_cipher_type]
+		if override_etype:
+			kdc_req_body['etype'] = override_etype
+		else:
+			kdc_req_body['etype'] = [self.kerberos_cipher_type]
 
 		authenticator_data = {}
 		authenticator_data['authenticator-vno'] = krb5_pvno
 		authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
-		authenticator_data['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
+		authenticator_data['cname'] = self.kerberos_TGT['cname']
 		authenticator_data['cusec'] = now.microsecond
 		authenticator_data['ctime'] = now
 		
@@ -268,12 +293,11 @@ class KerbrosComm:
 		tgs = rep.native
 		
 		encTGSRepPart = EncTGSRepPart.load(self.kerberos_cipher.decrypt(self.kerberos_session_key, 8, tgs['enc-part']['cipher'])).native
-		self.kerberos_session_key = Key(encTGSRepPart['key']['keytype'], encTGSRepPart['key']['keyvalue'])
-		self.kerberos_cipher = _enctype_table[encTGSRepPart['key']['keytype']]
+		key = Key(encTGSRepPart['key']['keytype'], encTGSRepPart['key']['keyvalue'])
 		
 		self.ccache.add_tgs(tgs, encTGSRepPart)
 		logging.debug('Got valid TGS reply')
-		return tgs, encTGSRepPart
+		return tgs, encTGSRepPart, key
 		
 		
 		
@@ -301,7 +325,7 @@ if __name__ == '__main__':
 	
 	ksoc = KerberosSocket(target.kerberos_ip)
 	
-	kc = KerbrosComm(ccred, target, ksoc)
+	kc = KerbrosComm(ccred, ksoc)
 	tgt = kc.get_TGT()
-	tgs = kc.get_TGS()
+	tgs = kc.get_TGS(target)
 	kc.ccache.to_file('test.ccache')

@@ -16,6 +16,15 @@ windows_epoch = datetime.datetime(1970,1,1, tzinfo=datetime.timezone.utc)
 def dt_to_kerbtime(dt):
 	td = dt - windows_epoch
 	return int((td.microseconds + (td.seconds + td.days * 24 * 3600) * 10**6) / 1e6)
+
+def TGSTicket2hashcat(res):		
+	tgs_encryption_type    = int(res['ticket']['enc-part']['etype'])
+	tgs_name_string        = res['ticket']['sname']['name-string'][0]
+	tgs_realm              = res['ticket']['realm']
+	tgs_checksum           = res['ticket']['enc-part']['cipher'][:16]
+	tgs_encrypted_data2    = res['ticket']['enc-part']['cipher'][16:]
+		
+	return '$krb5tgs$%s$*%s$%s$spn*$%s$%s' % (tgs_encryption_type,tgs_name_string,tgs_realm, tgs_checksum.hex(), tgs_encrypted_data2.hex() )
 	
 
 class User:
@@ -104,14 +113,21 @@ class User:
 			return [etype.value for etype in supp_enctypes]
 		return [etype for etype in supp_enctypes]
 		
-class TargetServer:
+class TargetUser:
 	def __init__(self):
-		self.ip = None
-		self.hostname = None
-		self.service = None #the service we are trying to get a ticket for (eg. cifs/mssql...)
-		self.domain = None #the kerberos realm
-		self.kerberos_ip = None #IP address of the kerberos server (active directory)
+		self.username = None
+		self.service  = None #the service we are trying to get a ticket for (eg. cifs/mssql...)
+		self.domain   = None #the kerberos realm
 
+	def get_principalname(self):
+		if self.service:
+			return [self.service, self.username]
+		return [self.username]
+
+	def get_formatted_pname(self):
+		if self.service:
+			return '%s/%s@%s' % (self.service, self.username, self.domain)
+		return '%s@%s' % (self.username, self.domain)
 
 def print_table(lines, separate_head=True):
 	"""Prints a formatted table given a 2 dimensional array"""

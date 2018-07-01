@@ -5,7 +5,7 @@ setup(
 	name="minikerberos",
 
 	# Version number (initial):
-	version="0.0.4",
+	version="0.0.5",
 
 	# Application author details:
 	author="Tamas Jos",
@@ -36,7 +36,7 @@ setup(
 	install_requires=[
 		'asn1crypto',
 	],
-	
+
 	entry_points={
 		'console_scripts': [
 			'ccacheedit = minikerberos.examples.ccache_editor:main',

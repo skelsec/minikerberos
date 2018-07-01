@@ -10,7 +10,7 @@ import glob
 import logging
 import hashlib
 from .asn1_structs import *
-from .common import dt_to_kerbtime
+from .common import dt_to_kerbtime, TGSTicket2hashcat
 from.constants import *
 from asn1crypto import core
 
@@ -74,20 +74,38 @@ class Credential:
 		self.authdata = []
 		self.ticket = None
 		self.second_ticket = None
-		
-		
+
+	def to_hash(self):
+		res = Ticket.load(self.ticket.to_asn1()).native
+		tgs_encryption_type    = int(res['enc-part']['etype'])
+		t = len(res['sname']['name-string'])
+		if t == 1:
+			tgs_name_string        = res['sname']['name-string'][0]
+		else:
+			tgs_name_string        = res['sname']['name-string'][1]
+		tgs_realm              = res['realm']
+		tgs_checksum           = res['enc-part']['cipher'][:16]
+		tgs_encrypted_data2    = res['enc-part']['cipher'][16:]
+
+		return '$krb5tgs$%s$*%s$%s$spn*$%s$%s' % (tgs_encryption_type,tgs_name_string,tgs_realm, tgs_checksum.hex(), tgs_encrypted_data2.hex() )
+	
 	def to_tgt(self):
+		"""
+		Returns the native format of an AS_REP message and the sessionkey in EncryptionKey native format
+		"""
 		enc_part = EncryptedData({'etype': 1, 'cipher': b''})
 		
 		tgt_rep = {}
 		tgt_rep['pvno'] = krb5_pvno
-		tgt_rep['msg-type'] = int(MESSAGE_TYPE('krb-as-rep'))
-		tgt_rep['crealm'] = self.server.realm
-		tgt_rep['cname'] = self.client.to_asn1()
-		tgt_rep['ticket'] = self.ticket.to_asn1()
-		tgt_rep['enc-part'] = enc_part
+		tgt_rep['msg-type'] = MESSAGE_TYPE.KRB_AS_REP.value
+		tgt_rep['crealm'] = self.server.realm.to_string()
+		tgt_rep['cname'] = self.client.to_asn1()[0]
+		tgt_rep['ticket'] = Ticket.load(self.ticket.to_asn1()).native
+		tgt_rep['enc-part'] = enc_part.native
+
+		t = EncryptionKey(self.key.to_asn1()).native
 		
-		return tgt_rep
+		return tgt_rep, t
 		
 	def to_kirbi(self):
 		filename = '%s@%s_%s' % (self.client.to_string() , self.server.to_string(), hashlib.sha1(self.ticket.to_asn1()).hexdigest()[:8])
@@ -529,6 +547,32 @@ class CCACHE:
 		cc = CCACHE()
 		cc.add_kirbi(kirbi)		
 		return cc
+
+	def get_all_tgt(self):
+		"""
+		Returns a list of AS_REP tickets in native format (dict). 
+		To determine which ticket are AP_REP we check for the server principal to be the kerberos service
+		"""
+		tgts = []
+		for cred in self.credentials:
+			if cred.server.to_string().lower().find('krbtgt') != -1:
+				tgts.append(cred.to_tgt())
+
+		return tgts
+
+	def get_hashes(self, all_hashes = False):
+		"""
+		Returns a list of hashes in hashcat-firendly format for tickets with encryption type 23 (which is RC4)
+		all_hashes: overrides the encryption type filtering and returns hash for all tickets
+
+		"""
+		hashes = []
+		for cred in self.credentials:
+			res = Ticket.load(cred.ticket.to_asn1()).native
+			if int(res['enc-part']['etype']) == 23 or all_hashes == True:
+				hashes.append(cred.to_hash())
+
+		return hashes
 		
 		
 	def parse(reader):

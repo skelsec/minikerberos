@@ -97,8 +97,8 @@ if __name__ == '__main__':
 	
 	logging.debug('Getting TGS for %s/%s@%s' % (target.service,target.hostname,target.domain))
 	
-	kc = KerbrosComm(ccred, target, ksoc)
+	kc = KerbrosComm(ccred, ksoc)
 	tgt = kc.get_TGT()
-	tgs = kc.get_TGS()
+	tgs, encpart, key = kc.get_TGS(target)
 	kc.ccache.to_file(args.ccache)	
 	logging.info('Done!')
