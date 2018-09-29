@@ -8,7 +8,7 @@ import secrets
 import datetime
 import hashlib
 import collections
-from .constants import *
+from minikerberos.constants import *
 
 
 # this is from impacket, a bit modified

@@ -88,7 +88,7 @@ if __name__ == '__main__':
 			sys.exit()
 
 		for user in users:
-			target = TargetUser()
+			target = KerberosTarget()
 			target.username = user
 			target.domain = args.realm #the kerberos realm
 			targets.append(target)
@@ -127,7 +127,7 @@ if __name__ == '__main__':
 				password = getpass.getpass('Enter password:')
 
 
-			ccred = User()
+			ccred = KerberosCredential()
 			ccred.username = args.username
 			ccred.domain = args.realm
 			ccred.password = password
