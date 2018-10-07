@@ -107,7 +107,7 @@ class Kerberoast:
 				self.kcomm.get_TGT()
 			except Exception as e:
 				logger.exception('Failed to get TGT ticket! Reason: %s' % str(e))
-				return
+				
 		
 		tgss = []
 		for target in targets:

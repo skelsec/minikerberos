@@ -9,6 +9,7 @@ import datetime
 import hashlib
 import collections
 from minikerberos.constants import *
+from minikerberos.encryption import string_to_key, Enctype
 
 
 # this is from impacket, a bit modified
@@ -72,14 +73,14 @@ class KerberosCredential:
 				return bytes.fromhex(self.kerberos_key_aes_256)
 			if self.password is not None:
 				salt = (self.domain.upper() + self.username).encode()
-				return string_to_key(Enctype.AES256, self.password, salt).contents
+				return string_to_key(Enctype.AES256, self.password.encode(), salt).contents
 			raise Exception('There is no key for AES256 encryption')
 		elif etype == EncryptionType.AES128_CTS_HMAC_SHA1_96:
 			if self.kerberos_key_aes_128:
 				return bytes.fromhex(self.kerberos_key_aes_128)
 			if self.password is not None:
 				salt = (self.domain.upper() + self.username).encode()
-				return string_to_key(Enctype.AES128, self.password, salt).contents
+				return string_to_key(Enctype.AES128, self.password.encode(), salt).contents
 			raise Exception('There is no key for AES128 encryption')
 		elif etype == EncryptionType.ARCFOUR_HMAC_MD5:
 			if self.kerberos_key_rc4:
@@ -96,7 +97,7 @@ class KerberosCredential:
 				return bytes.fromhex(self.kerberos_key_des)
 			elif self.password:
 				salt = (self.domain.upper() + self.username).encode()
-				return string_to_key(Enctype.DES3, self.password, salt).contents
+				return string_to_key(Enctype.DES3, self.password.encode(), salt).contents
 			else:
 				raise Exception('There is no key for DES3 encryption')
 				
@@ -105,7 +106,7 @@ class KerberosCredential:
 				return bytes.fromhex(self.kerberos_key_des)
 			elif self.password:
 				salt = (self.domain.upper() + self.username).encode()
-				return string_to_key(Enctype.DES_MD5, self.password, salt).contents
+				return string_to_key(Enctype.DES_MD5, self.password.encode(), salt).contents
 			else:
 				raise Exception('There is no key for DES3 encryption')
 		
