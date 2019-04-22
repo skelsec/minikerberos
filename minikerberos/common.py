@@ -5,37 +5,23 @@
 #
 
 import secrets
-import datetime
 import hashlib
 import collections
 from minikerberos.constants import *
-from minikerberos.encryption import string_to_key, Enctype
-
-
-# this is from impacket, a bit modified
-windows_epoch = datetime.datetime(1970,1,1, tzinfo=datetime.timezone.utc)
-def dt_to_kerbtime(dt):
-	td = dt - windows_epoch
-	return int((td.microseconds + (td.seconds + td.days * 24 * 3600) * 10**6) / 1e6)
-
-def TGSTicket2hashcat(res):		
-	tgs_encryption_type    = int(res['ticket']['enc-part']['etype'])
-	tgs_name_string        = res['ticket']['sname']['name-string'][0]
-	tgs_realm              = res['ticket']['realm']
-	tgs_checksum           = res['ticket']['enc-part']['cipher'][:16]
-	tgs_encrypted_data2    = res['ticket']['enc-part']['cipher'][16:]
-		
-	return '$krb5tgs$%s$*%s$%s$spn*$%s$%s' % (tgs_encryption_type,tgs_name_string,tgs_realm, tgs_checksum.hex(), tgs_encrypted_data2.hex() )
+from minikerberos.encryption import string_to_key, Enctype	
+from minikerberos.ccache import CCACHE	
 	
-def TGTTicket2hashcat(res):
-	tgt_encryption_type    = int(res['enc-part']['etype'])
-	tgt_name_string        = res['cname']['name-string'][0]
-	tgt_realm              = res['crealm']
-	tgt_checksum           = res['enc-part']['cipher'][:16]
-	tgt_encrypted_data2    = res['enc-part']['cipher'][16:]
-	
-	return '$krb5asrep$%s$%s$%s$%s$%s' % (tgt_encryption_type,tgt_name_string, tgt_realm, tgt_checksum.hex(), tgt_encrypted_data2.hex())
-	#$krb5asrep$23$checksum$edata2
+class KerberosSecretType(enum.Enum):
+	PASSWORD = 'PASSWORD'
+	PW = 'PW'
+	PASS = 'PASS'
+	NT = 'NT'
+	AES = 'AES'
+	RC4 = 'RC4'
+	DES = 'DES'
+	DES3 = 'DES3'
+	TDES = 'TDES'
+	CCACHE = 'CCACHE'
 
 class KerberosCredential:
 	def __init__(self):
@@ -49,6 +35,7 @@ class KerberosCredential:
 		self.kerberos_key_des = None
 		self.kerberos_key_rc4 = None
 		self.kerberos_key_des3 = None
+		self.ccache = None
 		
 	def get_preferred_enctype(self, server_enctypes):
 		client_enctypes = self.get_supported_enctypes(as_int=False)
@@ -182,6 +169,63 @@ class KerberosCredential:
 			cred.password = getpass.getpass()
 
 		return cred
+		
+	@staticmethod
+	def from_connection_string(s):
+		"""
+		Credential input format:
+		<domain>/<username>/<secret_type>:<secret>@<dc_ip_or_hostname>
+		"""
+		cred = KerberosCredential()
+		
+		cred.domain, t = s.split('/', 1)
+		cred.username, t = t.split('/', 1)
+		secret_type, t = t.split(':', 1)
+		secret, target = t.rsplit('@', 1)
+		
+		st = KerberosSecretType(secret_type.upper())
+		if st == KerberosSecretType.PASSWORD or st == KerberosSecretType.PW or st == KerberosSecretType.PASS:
+			cred.password = secret
+		
+		elif st == KerberosSecretType.NT or st == KerberosSecretType.RC4:
+			cred.nt_hash = secret
+			cred.kerberos_key_rc4 = secret
+			
+		
+		elif st == KerberosSecretType.AES:
+			cred.kerberos_key_aes_256 = secret
+			cred.kerberos_key_aes_128 = secret
+		
+		elif st == KerberosSecretType.DES:
+			cred.kerberos_key_des = secret
+		
+		elif st == KerberosSecretType.DES3 or st == KerberosSecretType.TDES:
+			cred.kerberos_key_des3 = secret
+			
+		elif st == KerberosSecretType.CCACHE:
+			cred.ccache = CCACHE.from_file(secret)
+			
+		return cred
+		
+	def __str__(self):
+		t = '===KerberosCredential===\r\n'
+		t += 'username: %s\r\n' % self.username
+		t += 'domain: %s\r\n' % self.domain
+		t += 'password: %s\r\n' % self.password
+		t += 'nt_hash: %s\r\n' % self.nt_hash
+		t += 'lm_hash: %s\r\n' % self.lm_hash
+		if self.kerberos_key_aes_256:
+			t += 'kerberos_key_aes_256: %s\r\n' % self.kerberos_key_aes_256
+		if self.kerberos_key_aes_128:
+			t += 'kerberos_key_aes_128: %s\r\n' % self.kerberos_key_aes_128
+		if self.kerberos_key_des:
+			t += 'kerberos_key_des: %s\r\n' % self.kerberos_key_des
+		if self.kerberos_key_rc4:
+			t += 'kerberos_key_rc4: %s\r\n' % self.kerberos_key_rc4
+		if self.kerberos_key_des3:
+			t += 'kerberos_key_des3: %s\r\n' % self.kerberos_key_des3
+		return t
+		
 		
 class KerberosTarget:
 	def __init__(self):

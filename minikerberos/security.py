@@ -1,5 +1,11 @@
+#!/usr/bin/env python3
+#
+# Author:
+#  Tamas Jos (@skelsec)
+#
+
 from minikerberos.communication import *
-from minikerberos.common import TGSTicket2hashcat
+from minikerberos.utils import TGSTicket2hashcat
 from minikerberos import logger
 
 class KerberosEtypeTest:

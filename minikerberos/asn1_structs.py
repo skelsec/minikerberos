@@ -32,8 +32,7 @@ class NegotiationToken(core.Choice):
 class PADATA_TYPE(core.Enumerated):
 	_map = {
 		0   : 'NONE', #(0),
-		1   : 'TGS-REQ', #(1),
-		1   : 'AP-REQ', #(1),
+		1   : 'TGS-REQ', #(1), #		1   : 'AP-REQ', #(1),
 		2   : 'ENC-TIMESTAMP', #(2),
 		3   : 'PW-SALT', #(3),
 		5   : 'ENC-UNIX-TIME', #(5),
@@ -69,7 +68,7 @@ class PADATA_TYPE(core.Enumerated):
 		107 : 'TD-REQ-NONCE', #(107),		-- INTEGER
 		108 : 'TD-REQ-SEQ', #(108),		-- INTEGER
 		128 : 'PA-PAC-REQUEST', #(128),	-- jbrezak@exchange.microsoft.com
-		129 : 'FOR-USER', #(129),		-- MS-KILE
+		129 : 'PA-FOR-USER', #(129),		-- MS-KILE
 		130 : 'FOR-X509-USER', #(130),		-- MS-KILE
 		131 : 'FOR-CHECK-DUPS', #(131),	-- MS-KILE
 		132 : 'AS-CHECKSUM', #(132),		-- MS-KILE
@@ -91,6 +90,7 @@ class PADATA_TYPE(core.Enumerated):
 		148 : 'PKU2U-NAME', #(148),		-- zhu-pku2u
 		149 : 'REQ-ENC-PA-REP', #(149),	--
 		165 : 'SUPPORTED-ETYPES', #(165)	-- MS-KILE
+		167 : 'PA-PAC-OPTIONS',
 	}
 	
 class AUTHDATA_TYPE(core.Enumerated):
@@ -248,7 +248,7 @@ class KerberosTime(core.GeneralizedTime):
     """
 
 	
-class AuthorizationDataElement(core.SequenceOf):
+class AuthorizationDataElement(core.Sequence):
 	_fields = [
         ('ad-type', krb5int32, {'tag_type': TAG, 'tag': 0}),
         ('ad-data', core.OctetString, {'tag_type': TAG, 'tag': 1}),
@@ -306,7 +306,7 @@ class KDCOptions(core.BitString):
 		11: 'opt-hardware-auth',
 		12: 'unused12',
 		13: 'unused13',
-		14: 'constrained-delegation',
+		14: 'constrained-delegation', #-- cname-in-addl-tkt (14) 
 		15: 'canonicalize',
 		16: 'request-anonymous',
 		17: 'unused17',
@@ -391,7 +391,7 @@ class SequenceOfTicket(core.SequenceOf):
 
 #-- Encrypted part of ticket
 class EncTicketPart(core.Sequence):
-	explicit = (APPLICATION,3)
+	explicit = (APPLICATION, 3)
 	
 	_fields = [
 		('flags', TicketFlags, {'tag_type': TAG, 'tag': 0}),
@@ -410,7 +410,7 @@ class EncTicketPart(core.Sequence):
 
 class Checksum(core.Sequence):
 	_fields = [
-		('cksumtype', CKSUMTYPE, {'tag_type': TAG, 'tag': 0}),
+		('cksumtype', krb5int32, {'tag_type': TAG, 'tag': 0}), #CKSUMTYPE
 		('checksum', core.OctetString, {'tag_type': TAG, 'tag': 1}),
 	]
 
@@ -509,6 +509,22 @@ class TGS_REQ(KDC_REQ):
 #-- padata-type ::= PA-ENC-TIMESTAMP
 #-- padata-value ::= EncryptedData - PA-ENC-TS-ENC
 
+class PA_PAC_OPTIONSTypes(core.BitString):
+	_map = {
+			0: 'Claims',
+			1: 'Branch Aware',
+			2: 'Forward to Full DC',
+			3: 'resource-based constrained delegation',
+		}
+
+class PA_PAC_OPTIONS(core.Sequence):
+	_fields = [
+		('value', PA_PAC_OPTIONSTypes, {'tag_type': TAG, 'tag': 0}),
+	]
+	
+
+	
+
 class PA_ENC_TS_ENC(core.Sequence):
 	_fields = [
 		('patimestamp', KerberosTime, {'tag_type': TAG, 'tag': 0}), #-- client's time
@@ -568,8 +584,6 @@ class EncASRepPart(EncKDCRepPart):
 	
 class EncTGSRepPart(EncKDCRepPart):
 	explicit = (APPLICATION, 26)
-
-
 
 class AP_REQ(core.Sequence):
 	explicit = (APPLICATION, 14)
@@ -730,6 +744,44 @@ class KRBCRED(core.Sequence):
 		('enc-part', EncryptedData , {'tag_type': TAG, 'tag': 3}),
 	
 	]
+
+#https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/aceb70de-40f0-4409-87fa-df00ca145f5a
+#other name: PA-S4U2Self
+class PA_FOR_USER_ENC(core.Sequence): 
+	_fields = [
+		('userName', PrincipalName, {'tag_type': TAG, 'tag': 0}),
+		('userRealm', Realm, {'tag_type': TAG, 'tag': 1}),
+		('cksum', Checksum, {'tag_type': TAG, 'tag': 2}),
+		('auth-package', KerberosString , {'tag_type': TAG, 'tag': 3}),
+	
+	]
+	
+class S4UUserID(core.BitString):
+	_map = {
+		0x40000000 : 'check-logon-hour', #This option causes the KDC to check logon hour restrictions for the user.
+		0x20000000 : 'signed-with-kun-27', #In a request, asks the KDC to sign the reply with key usage number 27. In a reply, indicates that it was signed with key usage number 27.
+	}
+
+#https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/cd9d5ca7-ce20-4693-872b-2f5dd41cbff6
+class S4UUserID(core.Sequence):
+	_fields = [
+		('nonce', core.Integer, {'tag_type': TAG, 'tag': 0}), #-- the nonce in KDC-REQ-BODY
+		('cname', PrincipalName, {'tag_type': TAG, 'tag': 1, 'optional' : True}),
+		#-- Certificate mapping hints
+		('crealm', Realm, {'tag_type': TAG, 'tag': 2}),
+		('subject-certificate', core.OctetString, {'tag_type': TAG, 'tag': 3, 'optional' : True}),
+		('options', S4UUserID, {'tag_type': TAG, 'tag': 4, 'optional' : True}),
+	]
+	
+#https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/cd9d5ca7-ce20-4693-872b-2f5dd41cbff6
+class PA_S4U_X509_USER(core.Sequence):
+	_fields = [
+		('user-id', S4UUserID, {'tag_type': TAG, 'tag': 0}),
+		('checksum', Checksum, {'tag_type': TAG, 'tag': 1}),	
+	]
+
+class AD_IF_RELEVANT(AuthorizationData):
+	pass
 
 
 #	

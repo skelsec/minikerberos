@@ -5,12 +5,13 @@
 #
 
 import os
+import io
 import datetime
 import glob
 import logging
 import hashlib
 from minikerberos.asn1_structs import *
-from minikerberos.common import dt_to_kerbtime, TGSTicket2hashcat
+from minikerberos.utils import dt_to_kerbtime, TGSTicket2hashcat
 from minikerberos.constants import *
 from minikerberos import logger
 from asn1crypto import core
@@ -24,12 +25,20 @@ class Header:
 		self.taglen = None
 		self.tagdata = None
 		
-	def parse(reader):
-		h = Header()
-		h.tag = int.from_bytes(reader.read(2), byteorder='big', signed=False)
-		h.taglen = int.from_bytes(reader.read(2), byteorder='big', signed=False)
-		h.tagdata = reader.read(h.taglen)
-		return h
+	@staticmethod
+	def parse(data):
+		"""
+		returns a list of header tags
+		"""
+		reader = io.BytesIO(data)
+		headers = []
+		while reader.tell() < len(data):
+			h = Header()
+			h.tag = int.from_bytes(reader.read(2), byteorder='big', signed=False)
+			h.taglen = int.from_bytes(reader.read(2), byteorder='big', signed=False)
+			h.tagdata = reader.read(h.taglen)
+			headers.append(h)
+		return headers
 		
 	def to_bytes(self):
 		t =  self.tag.to_bytes(2, byteorder='big', signed=False)
@@ -421,7 +430,6 @@ class CCACHE:
 	"""
 	def __init__(self, empty = False):
 		self.file_format_version = None #0x0504
-		self.headerlen = None
 		self.headers = []
 		self.primary_principal = None
 		self.credentials = []
@@ -431,18 +439,24 @@ class CCACHE:
 		
 	def __setup(self):
 		self.file_format_version = 0x0504
-		self.headerlen = 1
+		
 		header = Header()
 		header.tag = 1
 		header.taglen = 8
-		header.tagdata = b'\xff\xff\xff\xff\x00\x00\x00\x00'
+		#header.tagdata = b'\xff\xff\xff\xff\x00\x00\x00\x00'
+		header.tagdata = b'\x00\x00\x00\x00\x00\x00\x00\x00'
 		self.headers.append(header)
+		
+		#t_hdr = b''
+		#for header in self.headers:
+		#	t_hdr += header.to_bytes()
+		#self.headerlen = 1 #size of the entire header in bytes, encoded in 2 byte big-endian unsigned int
+		
 		self.primary_principal = CCACHEPrincipal.dummy()
 		
 	def __str__(self):
 		t = '== CCACHE ==\n'
 		t+= 'file_format_version : %s\n' % self.file_format_version
-		t+= 'headerlen : %s\n' % self.headerlen
 		for header in self.headers:
 			t+= '%s\n' % header
 		t+= 'primary_principal : %s\n' % self.primary_principal
@@ -579,9 +593,15 @@ class CCACHE:
 	def parse(reader):
 		c = CCACHE(True)
 		c.file_format_version = int.from_bytes(reader.read(2), byteorder='big', signed=False)
-		c.headerlen = int.from_bytes(reader.read(2), byteorder='big', signed=False)
-		for i in range(c.headerlen):
-			c.headers.append(Header.parse(reader))
+		
+		hdr_size = int.from_bytes(reader.read(2), byteorder='big', signed=False)
+		c.headers = Header.parse(reader.read(hdr_size))
+		
+		#c.headerlen = 
+		#for i in range(c.headerlen):
+		#	c.headers.append(Header.parse(reader))
+		
+		
 		c.primary_principal = CCACHEPrincipal.parse(reader)
 		pos = reader.tell()
 		reader.seek(-1,2)
@@ -594,9 +614,14 @@ class CCACHE:
 		
 	def to_bytes(self):
 		t = self.file_format_version.to_bytes(2, byteorder='big', signed=False)
-		t += len(self.headers).to_bytes(2, byteorder='big', signed=False)
+		
+		t_hdr = b''
 		for header in self.headers:
-			t += header.to_bytes()
+			t_hdr += header.to_bytes()
+		
+		t += len(t_hdr).to_bytes(2, byteorder='big', signed=False)
+		t += t_hdr
+		
 		t += self.primary_principal.to_bytes()
 		for cred in self.credentials:
 			t += cred.to_bytes()
@@ -618,7 +643,6 @@ class CCACHE:
 		dir_path = os.path.join(os.path.abspath(directory_path), '*.kirbi')
 		for filename in glob.glob(dir_path):
 			with open(filename, 'rb') as f:
-				#print(filename)
 				kirbidata = f.read()
 				kirbi = KRBCRED.load(kirbidata).native
 				cc.add_kirbi(kirbi)

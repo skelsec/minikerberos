@@ -5,7 +5,7 @@ setup(
 	name="minikerberos",
 
 	# Version number (initial):
-	version="0.0.7",
+	version="0.0.8",
 
 	# Application author details:
 	author="Tamas Jos",
@@ -40,9 +40,11 @@ setup(
 	entry_points={
 		'console_scripts': [
 			'ccacheedit = minikerberos.examples.ccache_editor:main',
-			'kerberoscomm = minikerberos.examples.kerberoscomm:main',
 			'kirbi2ccache = minikerberos.examples.kirbi2ccache:main',
 			'ccache2kirbi = minikerberos.examples.ccache2kirbi:main',
+			'ccacheroast = minikerberos.examples.ccacheroast:main',
+			'getTGT = minikerberos.examples.getTGT:main',
+			'getTGS = minikerberos.examples.getTGS:main',
 		],
 	}
 )
