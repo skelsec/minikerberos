@@ -265,7 +265,10 @@ class Times:
 			t.authtime = dt_to_kerbtime(enc_as_rep_part['authtime'])
 		else:
 			t.authtime = 0
-		t.starttime = dt_to_kerbtime(enc_as_rep_part['starttime'])
+		if 'starttime' in enc_as_rep_part and enc_as_rep_part['starttime']:
+			t.starttime = dt_to_kerbtime(enc_as_rep_part['starttime'])
+		else:
+			t.starttime = 0
 		t.endtime = dt_to_kerbtime(enc_as_rep_part['endtime'])
 		t.renew_till = dt_to_kerbtime(enc_as_rep_part['renew-till'])
 		

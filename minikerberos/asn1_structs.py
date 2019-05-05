@@ -89,6 +89,7 @@ class PADATA_TYPE(core.Enumerated):
 		147 : 'PKINIT-KX', #(147),		-- krb-wg-anon
 		148 : 'PKU2U-NAME', #(148),		-- zhu-pku2u
 		149 : 'REQ-ENC-PA-REP', #(149),	--
+		151 : 'SPAKE', #(151),	https://datatracker.ietf.org/doc/draft-ietf-kitten-krb-spake-preauth/?include_text=1
 		165 : 'SUPPORTED-ETYPES', #(165)	-- MS-KILE
 		167 : 'PA-PAC-OPTIONS',
 	}

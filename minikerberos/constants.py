@@ -121,4 +121,5 @@ class PaDataType(enum.Enum):
 	PKINIT_KX = 147#		__ krb_wg_anon
 	PKU2U_NAME = 148#		__ zhu_pku2u
 	REQ_ENC_PA_REP = 149#	__
+	SPAKE = 151#	__https://datatracker.ietf.org/doc/draft-ietf-kitten-krb-spake-preauth/?include_text=1
 	SUPPORTED_ETYPES = 165 #)	__ MS_KILE

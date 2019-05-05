@@ -16,6 +16,7 @@ from minikerberos.kerberoserror import *
 from minikerberos.constants import *
 from minikerberos.common import *
 from minikerberos.ccache import *
+from minikerberos.structures import *
 from minikerberos.encryption import _enctype_table, Key, _HMACMD5
 
 
@@ -133,6 +134,7 @@ class KerbrosComm:
 		self.kerberos_cipher = None
 		self.kerberos_cipher_type = None
 		self.kerberos_key = None
+		self.server_salt = None
 		
 	@staticmethod
 	def from_tgt(ksoc, tgt, key):
@@ -180,7 +182,9 @@ class KerbrosComm:
 		logger.debug('Selecting common encryption type: %s' % supp_enc.name)
 		self.kerberos_cipher = _enctype_table[supp_enc.value]
 		self.kerberos_cipher_type = supp_enc.value
-		self.kerberos_key = Key(self.kerberos_cipher.enctype, self.usercreds.get_key_for_enctype(supp_enc))
+		if 'salt' in enc_info and enc_info['salt'] is not None:
+			self.server_salt = enc_info['salt'].encode() 
+		self.kerberos_key = Key(self.kerberos_cipher.enctype, self.usercreds.get_key_for_enctype(supp_enc, salt = self.server_salt))
 		enc_timestamp = self.kerberos_cipher.encrypt(self.kerberos_key, 1, timestamp, None)
 		
 		
@@ -277,14 +281,24 @@ class KerbrosComm:
 
 		cipherText = rep['enc-part']['cipher']
 		temp = self.kerberos_cipher.decrypt(self.kerberos_key, 3, cipherText)
-		self.kerberos_TGT_encpart = EncASRepPart.load(temp).native
+		try:
+			self.kerberos_TGT_encpart = EncASRepPart.load(temp).native
+		except Exception as e:
+			logger.debug('EncAsRepPart load failed, is this linux?')
+			try:
+				self.kerberos_TGT_encpart = EncTGSRepPart.load(temp).native
+			except Exception as e:
+				logger.error('Failed to load decrypted part of the reply!')
+				raise e
+				
+		print(self.kerberos_TGT_encpart)
 		self.kerberos_session_key = Key(self.kerberos_cipher.enctype, self.kerberos_TGT_encpart['key']['keyvalue'])
 		self.ccache.add_tgt(self.kerberos_TGT, self.kerberos_TGT_encpart, override_pp = True)
 		logger.debug('Got valid TGT')
 		
 		return 
 		
-	def get_TGS(self, spn_user, override_etype = None):
+	def get_TGS(self, spn_user, override_etype = None, is_linux = True):
 		"""
 		Requests a TGS ticket for the specified user.
 		Retruns the TGS ticket, end the decrpyted encTGSRepPart.
@@ -312,6 +326,19 @@ class KerbrosComm:
 		authenticator_data['cname'] = self.kerberos_TGT['cname']
 		authenticator_data['cusec'] = now.microsecond
 		authenticator_data['ctime'] = now
+		
+		if is_linux:
+			ac = AuthenticatorChecksum()
+			ac.flags = 0
+			ac.channel_binding = b'\x00'*16
+			
+			chksum = {}
+			chksum['cksumtype'] = 0x8003
+			chksum['checksum'] = ac.to_bytes()
+			print(chksum['checksum'])
+			
+			authenticator_data['cksum'] = Checksum(chksum)
+			authenticator_data['seq-number'] = 0
 		
 		authenticator_data_enc = self.kerberos_cipher.encrypt(self.kerberos_session_key, 7, Authenticator(authenticator_data).dump(), None)
 		

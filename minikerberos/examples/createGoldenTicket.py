@@ -62,4 +62,11 @@ if __name__ == '__main__':
 	krbtgt_enc = EncTicketPart.load(temp).native
 	pprint.pprint(krbtgt_enc)
 	
+	#print(krbtgt_enc['authorization-data'][0]['ad-data'])
+	ad_data = AD_IF_RELEVANT.load(krbtgt_enc['authorization-data'][0]['ad-data'])
+	
+	with open('addata.bin','wb') as f:
+		f.write(ad_data.native[0]['ad-data'])
+	
+	
 	

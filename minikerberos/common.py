@@ -51,7 +51,7 @@ class KerberosCredential:
 								)
 						)
 		
-	def get_key_for_enctype(self, etype):
+	def get_key_for_enctype(self, etype, salt = None):
 		"""
 		Returns the encryption key bytes for the enctryption type.
 		"""
@@ -59,14 +59,16 @@ class KerberosCredential:
 			if self.kerberos_key_aes_256:
 				return bytes.fromhex(self.kerberos_key_aes_256)
 			if self.password is not None:
-				salt = (self.domain.upper() + self.username).encode()
+				if not salt:
+					salt = (self.domain.upper() + self.username).encode()
 				return string_to_key(Enctype.AES256, self.password.encode(), salt).contents
 			raise Exception('There is no key for AES256 encryption')
 		elif etype == EncryptionType.AES128_CTS_HMAC_SHA1_96:
 			if self.kerberos_key_aes_128:
 				return bytes.fromhex(self.kerberos_key_aes_128)
 			if self.password is not None:
-				salt = (self.domain.upper() + self.username).encode()
+				if not salt:
+					salt = (self.domain.upper() + self.username).encode()
 				return string_to_key(Enctype.AES128, self.password.encode(), salt).contents
 			raise Exception('There is no key for AES128 encryption')
 		elif etype == EncryptionType.ARCFOUR_HMAC_MD5:
@@ -83,7 +85,8 @@ class KerberosCredential:
 			if self.kerberos_key_des3:
 				return bytes.fromhex(self.kerberos_key_des)
 			elif self.password:
-				salt = (self.domain.upper() + self.username).encode()
+				if not salt:
+					salt = (self.domain.upper() + self.username).encode()
 				return string_to_key(Enctype.DES3, self.password.encode(), salt).contents
 			else:
 				raise Exception('There is no key for DES3 encryption')
@@ -92,7 +95,8 @@ class KerberosCredential:
 			if self.kerberos_key_des:
 				return bytes.fromhex(self.kerberos_key_des)
 			elif self.password:
-				salt = (self.domain.upper() + self.username).encode()
+				if not salt:
+					salt = (self.domain.upper() + self.username).encode()
 				return string_to_key(Enctype.DES_MD5, self.password.encode(), salt).contents
 			else:
 				raise Exception('There is no key for DES3 encryption')
