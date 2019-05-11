@@ -4,6 +4,7 @@
 #  Tamas Jos (@skelsec)
 #
 
+import getpass
 import secrets
 import hashlib
 import collections
@@ -36,6 +37,33 @@ class KerberosCredential:
 		self.kerberos_key_rc4 = None
 		self.kerberos_key_des3 = None
 		self.ccache = None
+		
+	help_epilog = """==== Extra Help ====
+kerberos_connection_string secret types: 
+   - Plaintext: "pw" or "pass" or "password"
+   - NT hash: "nt"
+   - RC4 key: "rc4"
+   - AES128/256 key: "aes"
+   - CCACHE file: "ccache"
+   - SSPI: "sspi"
+   
+   Example:
+   - Plaintext:
+      TEST/user/pw:@192.168.1.1 (you will be propted for password)
+      TEST/user/pw:SecretPassword@192.168.1.1
+      TEST/user/password:SecretPassword@192.168.1.1
+      TEST/user/pass:SecretPassword@192.168.1.1
+   - NT hash:
+      TEST/user/nt:921a7fece11f4d8c72432e41e40d0372@192.168.1.1
+   - SSPI:
+      TEST/user/sspi:@192.168.1.1
+   - RC4 key:
+      TEST/user/rc4:921a7fece11f4d8c72432e41e40d0372@192.168.1.1
+   - AES key:
+      TEST/user/aes:921a7fece11f4d8c72432e41e40d0372@192.168.1.1
+   - CCACHE file:
+      TEST/user/ccache:/path/to/file.ccache@192.168.1.1
+"""
 		
 	def get_preferred_enctype(self, server_enctypes):
 		client_enctypes = self.get_supported_enctypes(as_int=False)
@@ -189,7 +217,10 @@ class KerberosCredential:
 		
 		st = KerberosSecretType(secret_type.upper())
 		if st == KerberosSecretType.PASSWORD or st == KerberosSecretType.PW or st == KerberosSecretType.PASS:
-			cred.password = secret
+			if secret == '' or secret is None:
+				cred.password = getpass.getpass('Enter Kerberos credential password:')
+			else:
+				cred.password = secret
 		
 		elif st == KerberosSecretType.NT or st == KerberosSecretType.RC4:
 			cred.nt_hash = secret

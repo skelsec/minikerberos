@@ -291,14 +291,13 @@ class KerbrosComm:
 				logger.error('Failed to load decrypted part of the reply!')
 				raise e
 				
-		print(self.kerberos_TGT_encpart)
 		self.kerberos_session_key = Key(self.kerberos_cipher.enctype, self.kerberos_TGT_encpart['key']['keyvalue'])
 		self.ccache.add_tgt(self.kerberos_TGT, self.kerberos_TGT_encpart, override_pp = True)
 		logger.debug('Got valid TGT')
 		
 		return 
 		
-	def get_TGS(self, spn_user, override_etype = None, is_linux = True):
+	def get_TGS(self, spn_user, override_etype = None, is_linux = False):
 		"""
 		Requests a TGS ticket for the specified user.
 		Retruns the TGS ticket, end the decrpyted encTGSRepPart.
@@ -548,7 +547,6 @@ class KerbrosComm:
 		authenticator_data['cusec'] = now.microsecond
 		authenticator_data['ctime'] = now
 		
-		print(encTGSRepPart['key']['keytype'])
 		cipher = _enctype_table[encTGSRepPart['key']['keytype']]
 		authenticator_data_enc = cipher.encrypt(sessionkey, 11, Authenticator(authenticator_data).dump(), None)
 		
