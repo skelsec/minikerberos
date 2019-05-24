@@ -37,7 +37,7 @@ def main():
 	target = KerberosTarget()
 	target.username = hostname
 	target.service = service
-	target.domain   = domain
+	target.domain = domain
 	
 	
 	if not ccred.ccache:
