@@ -9,6 +9,7 @@ class ChecksumFlags(enum.IntFlag):
 	GSS_C_SEQUENCE_FLAG = 8
 	GSS_C_CONF_FLAG = 16
 	GSS_C_INTEG_FLAG = 32
+	GSS_C_DCE_STYLE = 0x1000
 		  
 #https://tools.ietf.org/html/rfc4121#section-4.1.1
 class AuthenticatorChecksum:

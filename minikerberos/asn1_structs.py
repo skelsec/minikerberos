@@ -610,7 +610,7 @@ class EncAPRepPart(core.Sequence):
 	_fields = [
 		('ctime', KerberosTime, {'tag_type': TAG, 'tag': 0}),
 		('cusec', krb5int32, {'tag_type': TAG, 'tag': 1}),
-		('subkey', EncryptionKey , {'tag_type': TAG, 'tag': 2}),
+		('subkey', EncryptionKey , {'tag_type': TAG, 'tag': 2, 'optional': True}),
 		('seq-number', krb5uint32 , {'tag_type': TAG, 'tag': 3, 'optional': True}),
 	]
 
