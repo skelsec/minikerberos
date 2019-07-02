@@ -94,11 +94,15 @@ class Credential:
 		else:
 			tgs_name_string        = res['sname']['name-string'][1]
 		tgs_realm              = res['realm']
-		tgs_checksum           = res['enc-part']['cipher'][:16]
-		tgs_encrypted_data2    = res['enc-part']['cipher'][16:]
+		if tgs_encryption_type == EncryptionType.AES256_CTS_HMAC_SHA1_96.value:
+			tgs_checksum           = res['enc-part']['cipher'][-12:]
+			tgs_encrypted_data2    = res['enc-part']['cipher'][:-12:]
+			return '$krb5tgs$%s$%s$%s$%s$%s' % (tgs_encryption_type,tgs_name_string,tgs_realm, tgs_checksum.hex(), tgs_encrypted_data2.hex() )
+		else:
+			tgs_checksum           = res['enc-part']['cipher'][:16]
+			tgs_encrypted_data2    = res['enc-part']['cipher'][16:]
+			return '$krb5tgs$%s$*%s$%s$spn*$%s$%s' % (tgs_encryption_type,tgs_name_string,tgs_realm, tgs_checksum.hex(), tgs_encrypted_data2.hex() )
 
-		return '$krb5tgs$%s$*%s$%s$spn*$%s$%s' % (tgs_encryption_type,tgs_name_string,tgs_realm, tgs_checksum.hex(), tgs_encrypted_data2.hex() )
-	
 	def to_tgt(self):
 		"""
 		Returns the native format of an AS_REP message and the sessionkey in EncryptionKey native format
