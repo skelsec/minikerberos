@@ -5,7 +5,7 @@
 #
 
 from minikerberos.communication import *
-from minikerberos.utils import TGSTicket2hashcat
+from minikerberos.utils import TGSTicket2hashcat, TGTTicket2hashcat
 from minikerberos import logger
 
 class KerberosEtypeTest:

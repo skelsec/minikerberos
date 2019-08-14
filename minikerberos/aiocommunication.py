@@ -529,7 +529,6 @@ class KerbrosCommAIO:
 			chksum = {}
 			chksum['cksumtype'] = 0x8003
 			chksum['checksum'] = ac.to_bytes()
-			print(chksum['checksum'])
 			
 			authenticator_data['cksum'] = Checksum(chksum)
 			authenticator_data['seq-number'] = seq_number
@@ -566,7 +565,6 @@ class KerbrosCommAIO:
 			chksum = {}
 			chksum['cksumtype'] = 0x8003
 			chksum['checksum'] = ac.to_bytes()
-			print(chksum['checksum'])
 			
 			authenticator_data['cksum'] = Checksum(chksum)
 			authenticator_data['seq-number'] = seq_number
