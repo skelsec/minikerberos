@@ -5,7 +5,7 @@ setup(
 	name="minikerberos",
 
 	# Version number (initial):
-	version="0.0.11",
+	version="0.0.11+supercollider",
 
 	# Application author details:
 	author="Tamas Jos",
@@ -37,14 +37,14 @@ setup(
 		'asn1crypto',
 	],
 
-	entry_points={
-		'console_scripts': [
-			'ccacheedit = minikerberos.examples.ccache_editor:main',
-			'kirbi2ccache = minikerberos.examples.kirbi2ccache:main',
-			'ccache2kirbi = minikerberos.examples.ccache2kirbi:main',
-			'ccacheroast = minikerberos.examples.ccacheroast:main',
-			'getTGT = minikerberos.examples.getTGT:main',
-			'getTGS = minikerberos.examples.getTGS:main',
-		],
-	}
+	# entry_points={
+	# 	'console_scripts': [
+	# 		'ccacheedit = minikerberos.examples.ccache_editor:main',
+	# 		'kirbi2ccache = minikerberos.examples.kirbi2ccache:main',
+	# 		'ccache2kirbi = minikerberos.examples.ccache2kirbi:main',
+	# 		'ccacheroast = minikerberos.examples.ccacheroast:main',
+	# 		'getTGT = minikerberos.examples.getTGT:main',
+	# 		'getTGS = minikerberos.examples.getTGS:main',
+	# 	],
+	# }
 )
