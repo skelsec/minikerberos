@@ -5,7 +5,7 @@ setup(
 	name="minikerberos",
 
 	# Version number (initial):
-	version="0.0.11.dev1+supercollider",
+	version="0.0.11+supercollider",
 
 	# Application author details:
 	author="Tamas Jos",
