@@ -5,7 +5,7 @@ setup(
 	name="minikerberos",
 
 	# Version number (initial):
-	version="0.0.11+supercollider",
+	version="0.0.11+supercollider.1",
 
 	# Application author details:
 	author="Tamas Jos",
@@ -21,7 +21,7 @@ setup(
 	# Details
 	url="https://github.com/skelsec/minikerberos",
 
-	zip_safe = True,
+	zip_safe=True,
 	#
 	# license="LICENSE.txt",
 	description="Kerberos manipulation library in pure Python",
@@ -34,7 +34,7 @@ setup(
 		"Operating System :: OS Independent",
 	),
 	install_requires=[
-		'asn1crypto',
+		'asn1crypto==0.24.0',
 	],
 
 	# entry_points={
