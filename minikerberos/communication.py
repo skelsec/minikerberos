@@ -220,7 +220,7 @@ class KerbrosComm:
 			3. PROFIT
 		"""
 		logger.debug('Generating initial TGT without authentication data')
-		now = datetime.datetime.utcnow()
+		now = datetime.datetime.now(datetime.timezone.utc)
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','proxiable']))
 		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
