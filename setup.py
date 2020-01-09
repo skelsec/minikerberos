@@ -34,7 +34,7 @@ setup(
 		"Operating System :: OS Independent",
 	),
 	install_requires=[
-		'asn1crypto==1.0.1',
+		'asn1crypto==0.24.0',
 	],
 
 	entry_points={
