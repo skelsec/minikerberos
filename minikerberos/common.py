@@ -10,19 +10,23 @@ import hashlib
 import collections
 from minikerberos.constants import *
 from minikerberos.encryption import string_to_key, Enctype	
-from minikerberos.ccache import CCACHE	
-	
+from minikerberos.ccache import CCACHE
+from minikerberos.keytab import Keytab
+
+
 class KerberosSecretType(enum.Enum):
 	PASSWORD = 'PASSWORD'
 	PW = 'PW'
 	PASS = 'PASS'
 	NT = 'NT'
-	AES = 'AES'
+	AES128 = 'AES128'
+	AES256 = 'AES256'
 	RC4 = 'RC4'
 	DES = 'DES'
 	DES3 = 'DES3'
 	TDES = 'TDES'
 	CCACHE = 'CCACHE'
+
 
 class KerberosCredential:
 	def __init__(self):
@@ -37,7 +41,7 @@ class KerberosCredential:
 		self.kerberos_key_rc4 = None
 		self.kerberos_key_des3 = None
 		self.ccache = None
-		
+
 	help_epilog = """==== Extra Help ====
 kerberos_connection_string secret types: 
    - Plaintext: "pw" or "pass" or "password"
@@ -64,21 +68,21 @@ kerberos_connection_string secret types:
    - CCACHE file:
       TEST/user/ccache:/path/to/file.ccache@192.168.1.1
 """
-		
+
 	def get_preferred_enctype(self, server_enctypes):
 		client_enctypes = self.get_supported_enctypes(as_int=False)
 		common_enctypes = list(set([s_enctype for s_enctype in server_enctypes]) & set(client_enctypes))
-			
+
 		for c_enctype in client_enctypes:
 			if c_enctype in common_enctypes:
 				return c_enctype
-		
+
 		raise Exception('No common supported enctypes! Server: %s Client: %s' % (
-								', '.join([s_enctype.name for s_enctype in server_enctypes]), 
-								', '.join([c_enctype.name for c_enctype in client_enctypes])
-								)
+			', '.join([s_enctype.name for s_enctype in server_enctypes]),
+			', '.join([c_enctype.name for c_enctype in client_enctypes])
+		)
 						)
-		
+
 	def get_key_for_enctype(self, etype, salt = None):
 		"""
 		Returns the encryption key bytes for the enctryption type.
@@ -118,7 +122,7 @@ kerberos_connection_string secret types:
 				return string_to_key(Enctype.DES3, self.password.encode(), salt).contents
 			else:
 				raise Exception('There is no key for DES3 encryption')
-				
+
 		elif etype == EncryptionType.DES_CBC_MD5: #etype == EncryptionType.DES_CBC_CRC or etype == EncryptionType.DES_CBC_MD4 or 
 			if self.kerberos_key_des:
 				return bytes.fromhex(self.kerberos_key_des)
@@ -128,17 +132,17 @@ kerberos_connection_string secret types:
 				return string_to_key(Enctype.DES_MD5, self.password.encode(), salt).contents
 			else:
 				raise Exception('There is no key for DES3 encryption')
-		
+
 		else:
 			raise Exception('Unsupported encryption type: %s' % etype.name)
-		
+
 	def get_supported_enctypes(self, as_int = True):
 		supp_enctypes = collections.OrderedDict()
 		if self.kerberos_key_aes_256:
 			supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
 		if self.kerberos_key_aes_128:
 			supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
-		
+
 		if self.password:
 			supp_enctypes[EncryptionType.DES_CBC_CRC] = 1
 			supp_enctypes[EncryptionType.DES_CBC_MD4] = 1
@@ -147,13 +151,13 @@ kerberos_connection_string secret types:
 			supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
 			supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
 			supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
-		
+
 		if self.password or self.nt_hash or self.kerberos_key_rc4:
 			supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
-		
+
 		if self.kerberos_key_des:
 			supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
-		
+
 		if as_int == True:
 			return [etype.value for etype in supp_enctypes]
 		return [etype for etype in supp_enctypes]
@@ -165,11 +169,11 @@ kerberos_connection_string secret types:
 		group.add_argument('-hashes', action="store", metavar = "LMHASH:NTHASH", help='NTLM hashes, format is LMHASH:NTHASH')
 		group.add_argument('-no-pass', action="store_true", help='don\'t ask for password (useful for -k)')
 		group.add_argument('-k', action="store_true", help='Use Kerberos authentication. Grabs credentials from ccache file '
-								 '(KRB5CCNAME) based on target parameters. If valid credentials cannot be found, it will use'
-								 ' the ones specified in the command line')
+														   '(KRB5CCNAME) based on target parameters. If valid credentials cannot be found, it will use'
+														   ' the ones specified in the command line')
 		group.add_argument('-aesKey', action="store", metavar = "hex key", help='AES key to use for Kerberos Authentication'
 																				' (128 or 256 bits)')
-	
+
 
 	@staticmethod
 	def from_args(args):
@@ -177,12 +181,12 @@ kerberos_connection_string secret types:
 		cred.from_target_string(args.target)
 		if args.hashes is not None:
 			cred.lm_hash, cred.nt_hash = args.hashes.split(':')
-		
+
 		if args.aesKey is not None:
 			try:
 				bytes.fromhex(args.aesKey)
 			except Exception as e:
-				logging.exception('Kerberos AES key format incorrect!')
+				raise ValueError('Kerberos AES key format incorrect!') from e
 
 			t = len(args.aesKey)
 			if t == 64:
@@ -196,12 +200,12 @@ kerberos_connection_string secret types:
 			if cred.has_kerberos_secret() == False:
 				raise Exception('Trying to perform Kerberos authentication with no usable kerberos secrets!')
 			cred.force_kerberos = True
-		
+
 		if args.no_pass == False and cred.has_secret() == False:
 			cred.password = getpass.getpass()
 
 		return cred
-		
+
 	@staticmethod
 	def from_connection_string(s):
 		"""
@@ -209,39 +213,70 @@ kerberos_connection_string secret types:
 		<domain>/<username>/<secret_type>:<secret>@<dc_ip_or_hostname>
 		"""
 		cred = KerberosCredential()
-		
+
 		cred.domain, t = s.split('/', 1)
 		cred.username, t = t.split('/', 1)
 		secret_type, t = t.split(':', 1)
 		secret, target = t.rsplit('@', 1)
-		
+
 		st = KerberosSecretType(secret_type.upper())
+		cred.add_secret(st, secret)
+
+		return cred
+
+	@staticmethod
+	def from_keytab(keytab_file_path: str, principal: str, realm: str):
+		cred = KerberosCredential()
+		cred.username = principal
+		cred.domain = realm
+
+		with open(keytab_file_path, 'rb') as kf:
+			keytab_bytes = kf.read()
+			keytab = Keytab.from_bytes(keytab_bytes)
+
+			for keytab_entry in keytab.entries:
+				if realm == keytab_entry.principal.realm.to_string():
+					for keytab_principal in keytab_entry.principal.components:
+						if principal == keytab_principal.to_string():
+							enctype = None
+							if Enctype.AES256 == keytab_entry.enctype:
+								enctype = KerberosSecretType.AES256
+							elif Enctype.AES128 == keytab_entry.enctype:
+								enctype = KerberosSecretType.AES128
+							elif Enctype.DES3 == keytab_entry.enctype:
+								enctype = KerberosSecretType.DES3
+							elif Enctype.DES_CRC == keytab_entry.enctype:
+								enctype = KerberosSecretType.DES
+							elif Enctype.DES_MD4 == keytab_entry.enctype:
+								enctype = KerberosSecretType.DES
+							elif Enctype.DES_MD5 == keytab_entry.enctype:
+								enctype = KerberosSecretType.DES
+							elif Enctype.RC4 == keytab_entry.enctype:
+								enctype = KerberosSecretType.RC4
+							if enctype:
+								cred.add_secret(enctype, keytab_entry.key_contents.hex())
+		return cred
+
+	def add_secret(self, st: KerberosSecretType, secret: str):
 		if st == KerberosSecretType.PASSWORD or st == KerberosSecretType.PW or st == KerberosSecretType.PASS:
 			if secret == '' or secret is None:
-				cred.password = getpass.getpass('Enter Kerberos credential password:')
+				self.password = getpass.getpass('Enter Kerberos credential password:')
 			else:
-				cred.password = secret
-		
+				self.password = secret
 		elif st == KerberosSecretType.NT or st == KerberosSecretType.RC4:
-			cred.nt_hash = secret
-			cred.kerberos_key_rc4 = secret
-			
-		
-		elif st == KerberosSecretType.AES:
-			cred.kerberos_key_aes_256 = secret
-			cred.kerberos_key_aes_128 = secret
-		
+			self.nt_hash = secret
+			self.kerberos_key_rc4 = secret
+		elif st == KerberosSecretType.AES128:
+			self.kerberos_key_aes_128 = secret
+		elif st == KerberosSecretType.AES256:
+			self.kerberos_key_aes_256 = secret
 		elif st == KerberosSecretType.DES:
-			cred.kerberos_key_des = secret
-		
+			self.kerberos_key_des = secret
 		elif st == KerberosSecretType.DES3 or st == KerberosSecretType.TDES:
-			cred.kerberos_key_des3 = secret
-			
+			self.kerberos_key_des3 = secret
 		elif st == KerberosSecretType.CCACHE:
-			cred.ccache = CCACHE.from_file(secret)
-			
-		return cred
-		
+			self.ccache = CCACHE.from_file(secret)
+
 	def __str__(self):
 		t = '===KerberosCredential===\r\n'
 		t += 'username: %s\r\n' % self.username

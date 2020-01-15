@@ -23,7 +23,8 @@ from minikerberos.encryption import _enctype_table, Key, _HMACMD5
 class KerberosSocketType(enum.Enum):
 	UDP = enum.auto()
 	TCP = enum.auto()
-	
+
+
 class KerberosSocket:
 	def __init__(self, ip, port = 88, soc_type = KerberosSocketType.TCP):
 		self.soc_type = soc_type
@@ -54,8 +55,7 @@ class KerberosSocket:
 			ip, port = addr.split(':')
 			
 		return KerberosSocket(ip, port = int(port), soc_type = soc_type)
-		
-		
+
 	def get_addr_str(self):
 		return '%s:%d' % (self.dst_ip, self.dst_port)
 		
@@ -63,8 +63,7 @@ class KerberosSocket:
 		if self.soc_type == KerberosSocketType.TCP:
 			self.soc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			self.soc.connect((self.dst_ip, self.dst_port))
-			
-			
+
 		elif self.soc_type == KerberosSocketType.UDP:
 			self.soc = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 			
@@ -122,7 +121,7 @@ class KerberosSocket:
 		
 
 class KerbrosComm:
-	def __init__(self,ccred, ksoc, ccache = None):
+	def __init__(self, ccred, ksoc, ccache = None):
 		self.usercreds = ccred
 		self.ksoc = ksoc
 		self.user_ccache = ccache
@@ -187,12 +186,9 @@ class KerbrosComm:
 		self.kerberos_key = Key(self.kerberos_cipher.enctype, self.usercreds.get_key_for_enctype(supp_enc, salt = self.server_salt))
 		enc_timestamp = self.kerberos_cipher.encrypt(self.kerberos_key, 1, timestamp, None)
 		
-		
 		pa_data_2 = {}
 		pa_data_2['padata-type'] = int(PADATA_TYPE('ENC-TIMESTAMP'))
 		pa_data_2['padata-value'] = EncryptedData({'etype': supp_enc.value, 'cipher': enc_timestamp}).dump()
-		
-		
 		
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','proxiable']))
@@ -203,8 +199,7 @@ class KerbrosComm:
 		kdc_req_body['rtime'] = now + datetime.timedelta(days=1)
 		kdc_req_body['nonce'] = secrets.randbits(31)
 		kdc_req_body['etype'] = [supp_enc.value] #selecting according to server's preferences
-		
-		
+
 		kdc_req = {}
 		kdc_req['pvno'] = krb5_pvno
 		kdc_req['msg-type'] = MESSAGE_TYPE.KRB_AS_REQ.value
@@ -225,7 +220,7 @@ class KerbrosComm:
 			3. PROFIT
 		"""
 		logger.debug('Generating initial TGT without authentication data')
-		now = datetime.datetime.utcnow()
+		now = datetime.datetime.now(datetime.timezone.utc)
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','proxiable']))
 		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
@@ -248,38 +243,41 @@ class KerbrosComm:
 		kdc_req['msg-type'] = MESSAGE_TYPE.KRB_AS_REQ.value
 		kdc_req['padata'] = [pa_data_1]
 		kdc_req['req-body'] = KDC_REQ_BODY(kdc_req_body)
-		
+
 		req = AS_REQ(kdc_req)	
 		
 		logger.debug('Sending initial TGT to %s' % self.ksoc.get_addr_str())
-		rep = self.ksoc.sendrecv(req.dump(), throw = False)
-				
+		rep = self.ksoc.sendrecv(req.dump())
+
 		if rep.name != 'KRB_ERROR':
 			#user can do kerberos auth without preauthentication!
 			self.kerberos_TGT = rep.native
+
+			etype = self.kerberos_TGT['enc-part']['etype']
 
 			#if we want to roast the asrep (tgt rep) part then we dont even have the proper keys to decrypt
 			#so we just return, the asrep can be extracted from this object anyhow
 			if decrypt_tgt == False:
 				return
 
-			self.kerberos_cipher = _enctype_table[23]
-			self.kerberos_cipher_type = 23
-			self.kerberos_key = Key(self.kerberos_cipher.enctype, self.usercreds.get_key_for_enctype(EncryptionType.ARCFOUR_HMAC_MD5))
+			self.kerberos_cipher = _enctype_table[etype]
+			self.kerberos_cipher_type = etype
+			encryption_type = EncryptionType(self.kerberos_cipher.enctype)
+			enctype = self.usercreds.get_key_for_enctype(encryption_type)
+			self.kerberos_key = Key(self.kerberos_cipher.enctype, enctype)
 			
 		else:
 			if rep.native['error-code'] != KerberosErrorCode.KDC_ERR_PREAUTH_REQUIRED.value:
 				raise KerberosError(rep)
 			rep = rep.native
-			logger.debug('Got reply from server, asikg to provide auth data')
+			logger.debug('Got reply from server, asking to provide auth data')
 			
 			rep = self.do_preauth(rep)
 			logger.debug('Got valid TGT response from server')
 			rep = rep.native
 			self.kerberos_TGT = rep
 
-
-		cipherText = rep['enc-part']['cipher']
+		cipherText = self.kerberos_TGT['enc-part']['cipher']
 		temp = self.kerberos_cipher.decrypt(self.kerberos_key, 3, cipherText)
 		try:
 			self.kerberos_TGT_encpart = EncASRepPart.load(temp).native
@@ -300,7 +298,7 @@ class KerbrosComm:
 	def get_TGS(self, spn_user, override_etype = None, is_linux = False):
 		"""
 		Requests a TGS ticket for the specified user.
-		Retruns the TGS ticket, end the decrpyted encTGSRepPart.
+		Returns the TGS ticket, end the decrpyted encTGSRepPart.
 
 		spn_user: KerberosTarget: the service user you want to get TGS for.
 		override_etype: None or list of etype values (int) Used mostly for kerberoasting, will override the AP_REQ supported etype values (which is derived from the TGT) to be able to recieve whatever tgs tiecket 
