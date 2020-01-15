@@ -11,7 +11,7 @@ class KerberosError(Exception):
 		self.errorcode = KerberosErrorCode(self.krb_err_msg['error-code'])
 		self.errormsg = KerberosErrorMessage[self.errorcode.name]
 		
-		super(Exception, self).__init__('%s Error Core: %d' % (self.errormsg.value, self.errorcode.value)) 
+		super(Exception, self).__init__('%s Error Code: %d' % (self.errormsg.value, self.errorcode.value)) 
 		
 
 # https://technet.microsoft.com/en-us/library/bb463166.aspx
