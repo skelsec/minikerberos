@@ -31,8 +31,14 @@ def main():
 	soc_type = KerberosSocketType.UDP if args.u else KerberosSocketType.TCP
 	ksoc = KerberosSocket.from_connection_string(args.kerberos_connection_string, soc_type)
 	
-	service, t = args.spn.split('/')
-	hostname, domain = t.split('@')
+	if args.spn.find('@') == -1:
+		raise Exception('SPN must contain @')
+	t, domain = args.spn.split('@')
+	if t.find('/') != -1:
+		service, hostname = args.spn.split('/')
+	else:
+		hostname = t
+		service = None
 	
 	target = KerberosTarget()
 	target.username = hostname
@@ -43,16 +49,16 @@ def main():
 	if not ccred.ccache:
 		logging.debug('Getting TGT')
 		kc = KerbrosComm(ccred, ksoc)
-		tgt = kc.get_TGT()
+		kc.get_TGT()
 		logging.debug('Getting TGS')
-		tgs, encpart, key = kc.get_TGS(target)
+		kc.get_TGS(target)
 	else:
 		logging.debug('Getting TGS via TGT from CCACHE')
 		for tgt, key in ccred.ccache.get_all_tgt():
 			try:
 				logging.info('Trying to get SPN with %s' % '!'.join(tgt['cname']['name-string']))
 				kc = KerbrosComm.from_tgt(ksoc, tgt, key)
-				tgs, encpart, key = kc.get_TGS(target)
+				kc.get_TGS(target)
 				logging.info('Sucsess!')
 			except Exception as e:
 				logging.debug('This ticket is not usable it seems Reason: %s' % e)

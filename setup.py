@@ -1,11 +1,21 @@
 from setuptools import setup, find_packages
+import re
+
+VERSIONFILE="minikerberos/_version.py"
+verstrline = open(VERSIONFILE, "rt").read()
+VSRE = r"^__version__ = ['\"]([^'\"]*)['\"]"
+mo = re.search(VSRE, verstrline, re.M)
+if mo:
+    verstr = mo.group(1)
+else:
+    raise RuntimeError("Unable to find version string in %s." % (VERSIONFILE,))
 
 setup(
 	# Application name:
 	name="minikerberos",
 
 	# Version number (initial):
-	version="0.0.12",
+	version=verstr,
 
 	# Application author details:
 	author="Tamas Jos",
@@ -34,7 +44,7 @@ setup(
 		"Operating System :: OS Independent",
 	),
 	install_requires=[
-		'asn1crypto==0.24.0',
+		'asn1crypto>=1.3.0',
 	],
 
 	entry_points={

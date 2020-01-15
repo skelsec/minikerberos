@@ -19,6 +19,7 @@ class KerberosSecretType(enum.Enum):
 	PW = 'PW'
 	PASS = 'PASS'
 	NT = 'NT'
+	AES = 'AES' #keeping this here for user's secret-type specification and compatibility reasons
 	AES128 = 'AES128'
 	AES256 = 'AES256'
 	RC4 = 'RC4'
@@ -178,7 +179,7 @@ kerberos_connection_string secret types:
 	@staticmethod
 	def from_args(args):
 		cred = KerberosCredential()
-		cred.from_target_string(args.target)
+		cred.from_connection_string(args.target)
 		if args.hashes is not None:
 			cred.lm_hash, cred.nt_hash = args.hashes.split(':')
 
@@ -231,8 +232,9 @@ kerberos_connection_string secret types:
 		cred.domain = realm
 
 		with open(keytab_file_path, 'rb') as kf:
-			keytab_bytes = kf.read()
-			keytab = Keytab.from_bytes(keytab_bytes)
+			#keytab_bytes = kf.read()
+			#keytab = Keytab.from_bytes(keytab_bytes)
+			keytab = Keytab.from_buffer(kf)
 
 			for keytab_entry in keytab.entries:
 				if realm == keytab_entry.principal.realm.to_string():
@@ -270,6 +272,14 @@ kerberos_connection_string secret types:
 			self.kerberos_key_aes_128 = secret
 		elif st == KerberosSecretType.AES256:
 			self.kerberos_key_aes_256 = secret
+		elif st == KerberosSecretType.AES:
+			bytes.fromhex(secret)
+			if len(secret) == 32:
+				self.kerberos_key_aes_128 = secret
+			elif len(secret) == 64:
+				self.kerberos_key_aes_256 = secret
+			else:
+				raise Exception('AES key incorrect length!')
 		elif st == KerberosSecretType.DES:
 			self.kerberos_key_des = secret
 		elif st == KerberosSecretType.DES3 or st == KerberosSecretType.TDES:

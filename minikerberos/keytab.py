@@ -1,3 +1,9 @@
+#
+#
+# Initial commit and structure: Tamas Jos (@skelsec)
+# Main contributor to this file: Philip Alexiev https://github.com/philip-alexiev
+
+
 # https://web.mit.edu/kerberos/krb5-1.12/doc/formats/keytab_file_format.html
 #
 # Be careful using this parser/writer! The specifications in the MIT Kerberos's official page doesnt match with the file Windows server generates!!
@@ -29,7 +35,7 @@ class KeytabPrincipal:
         p.name_type = 1
         p.num_components = 1
         p.realm = KeytabOctetString.from_string('kerbi.corp')
-        for i in range(1):
+        for _ in range(1):
             p.components.append(KeytabOctetString.from_string('kerbi'))
 
         return p
@@ -41,11 +47,12 @@ class KeytabPrincipal:
         t = {'name-type': self.name_type, 'name-string': [name.to_string() for name in self.components]}
         return t, self.realm.to_string()
 
+    @staticmethod
     def from_buffer(buffer):
         p = KeytabPrincipal()
         p.num_components = int.from_bytes(buffer.read(2), byteorder='big', signed=False)
         p.realm = KeytabOctetString.parse(buffer)
-        for i in range(p.num_components):
+        for _ in range(p.num_components):
             p.components.append(KeytabOctetString.parse(buffer))
         p.name_type = int.from_bytes(buffer.read(4), byteorder='big', signed=False)
         return p
@@ -80,13 +87,15 @@ class KeytabOctetString:
 
     def to_string(self):
         return self.data.decode()
-
+    
+    @staticmethod
     def from_string(data):
         o = KeytabOctetString()
         o.data = data.encode()
         o.length = len(o.data)
         return o
 
+    @staticmethod
     def from_asn1(data):
         o = KeytabOctetString()
         o.length = len(data)
@@ -96,6 +105,7 @@ class KeytabOctetString:
             o.data = data
         return o
 
+    @staticmethod
     def parse(reader):
         o = KeytabOctetString()
         o.length = int.from_bytes(reader.read(2), byteorder='big', signed=False)

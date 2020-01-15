@@ -71,6 +71,9 @@ class KerberosSocket:
 			raise Exception('Unknown socket type!')
 			
 	def sendrecv(self, data, throw = True):
+		#throw variable indicates wether to create an exception when a kerberos error happens or just return the kerberos error"
+		#for any other exceptions types (eg. connection related errors) an exception will be raised regardless
+
 		self.create_soc()
 		try:
 			if self.soc_type == KerberosSocketType.TCP:
@@ -110,7 +113,8 @@ class KerberosSocket:
 						# got a message from a different IP than the target, strange!
 						# continuing, but this might result in an infinite loop
 						continue
-			
+			if buff == b'':
+				raise Exception('Server closed the connection!')
 			krb_message = KerberosResponse.load(buff)
 			if krb_message.name == 'KRB_ERROR' and throw == True:
 				raise KerberosError(krb_message)
@@ -173,9 +177,9 @@ class KerbrosComm:
 		pa_data_1['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
 		pa_data_1['padata-value'] = PA_PAC_REQUEST({'include-pac': True}).dump()
 		
-		now = datetime.datetime.utcnow()
+		now = datetime.datetime.now(datetime.timezone.utc) #datetime.datetime.utcnow()
 		#creating timestamp asn1
-		timestamp = PA_ENC_TS_ENC({'patimestamp': now, 'pausec': now.microsecond}).dump()
+		timestamp = PA_ENC_TS_ENC({'patimestamp': now.replace(microsecond=0), 'pausec': now.microsecond}).dump()
 		
 		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
 		logger.debug('Selecting common encryption type: %s' % supp_enc.name)
@@ -195,8 +199,8 @@ class KerbrosComm:
 		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
 		kdc_req_body['realm'] = self.usercreds.domain.upper()
 		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
-		kdc_req_body['till'] = now + datetime.timedelta(days=1)
-		kdc_req_body['rtime'] = now + datetime.timedelta(days=1)
+		kdc_req_body['till']  = (now + datetime.timedelta(days=1)).replace(microsecond=0)
+		kdc_req_body['rtime'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['nonce'] = secrets.randbits(31)
 		kdc_req_body['etype'] = [supp_enc.value] #selecting according to server's preferences
 
@@ -220,14 +224,14 @@ class KerbrosComm:
 			3. PROFIT
 		"""
 		logger.debug('Generating initial TGT without authentication data')
-		now = datetime.datetime.now(datetime.timezone.utc)
+		now = datetime.datetime.now(datetime.timezone.utc) #datetime.datetime.utcnow()
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','proxiable']))
 		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
 		kdc_req_body['realm'] = self.usercreds.domain.upper()
 		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
-		kdc_req_body['till'] = now + datetime.timedelta(days=1)
-		kdc_req_body['rtime'] = now + datetime.timedelta(days=1)
+		kdc_req_body['till']  = (now + datetime.timedelta(days=1)).replace(microsecond=0)
+		kdc_req_body['rtime'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['nonce'] = secrets.randbits(31)
 		if override_etype is None:
 			kdc_req_body['etype'] = self.usercreds.get_supported_enctypes()
@@ -247,7 +251,7 @@ class KerbrosComm:
 		req = AS_REQ(kdc_req)	
 		
 		logger.debug('Sending initial TGT to %s' % self.ksoc.get_addr_str())
-		rep = self.ksoc.sendrecv(req.dump())
+		rep = self.ksoc.sendrecv(req.dump(), throw = False)
 
 		if rep.name != 'KRB_ERROR':
 			#user can do kerberos auth without preauthentication!
@@ -305,12 +309,12 @@ class KerbrosComm:
 		"""
 		#construct tgs_req
 		logger.debug('Constructing TGS request for user %s' % spn_user.get_formatted_pname())
-		now = datetime.datetime.utcnow() 
+		now = datetime.datetime.now(datetime.timezone.utc) #datetime.datetime.utcnow()
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','renewable_ok', 'canonicalize']))
 		kdc_req_body['realm'] = spn_user.domain.upper()
 		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': spn_user.get_principalname()})
-		kdc_req_body['till'] = now + datetime.timedelta(days=1)
+		kdc_req_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['nonce'] = secrets.randbits(31)
 		if override_etype:
 			kdc_req_body['etype'] = override_etype
@@ -384,7 +388,7 @@ class KerbrosComm:
 		
 		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
 		auth_package_name = 'Kerberos'
-		now = datetime.datetime.utcnow() 
+		now = datetime.datetime.now(datetime.timezone.utc) #datetime.datetime.utcnow()
 		
 		
 		###### Calculating authenticator data
@@ -443,7 +447,7 @@ class KerbrosComm:
 		krb_tgs_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','canonicalize']))
 		krb_tgs_body['sname'] = PrincipalName({'name-type': NAME_TYPE.UNKNOWN.value, 'name-string': [self.usercreds.username]})
 		krb_tgs_body['realm'] = self.usercreds.domain.upper()
-		krb_tgs_body['till'] = now + datetime.timedelta(days=1)
+		krb_tgs_body['till']  = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		krb_tgs_body['nonce'] = secrets.randbits(31)
 		krb_tgs_body['etype'] = [supp_enc.value] #selecting according to server's preferences
 		
@@ -479,7 +483,7 @@ class KerbrosComm:
 		
 	# https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/c920c148-8a9c-42e9-b8e9-db5755cd281b
 	def S4U2proxy(self, s4uself_ticket, spn_user, supp_enc_methods = [EncryptionType.DES_CBC_CRC,EncryptionType.DES_CBC_MD4,EncryptionType.DES_CBC_MD5,EncryptionType.DES3_CBC_SHA1,EncryptionType.ARCFOUR_HMAC_MD5,EncryptionType.AES256_CTS_HMAC_SHA1_96,EncryptionType.AES128_CTS_HMAC_SHA1_96]):
-		now = datetime.datetime.utcnow() 
+		now = datetime.datetime.now(datetime.timezone.utc) #datetime.datetime.utcnow() 
 		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
 		
 		pa_pac_opts = {}
@@ -513,7 +517,7 @@ class KerbrosComm:
 		krb_tgs_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','constrained-delegation', 'canonicalize']))
 		krb_tgs_body['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': spn_user.get_principalname()})
 		krb_tgs_body['realm'] = self.usercreds.domain.upper()
-		krb_tgs_body['till'] = now + datetime.timedelta(days=1)
+		krb_tgs_body['till']  = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		krb_tgs_body['nonce'] = secrets.randbits(31)
 		krb_tgs_body['etype'] = [supp_enc.value] #selecting according to server's preferences
 		krb_tgs_body['additional-tickets'] = [s4uself_ticket]
@@ -537,7 +541,7 @@ class KerbrosComm:
 			
 		
 	def get_something(self, tgs, encTGSRepPart, sessionkey):
-		now = datetime.datetime.utcnow() 
+		now = datetime.datetime.now(datetime.timezone.utc) #datetime.datetime.utcnow()
 		authenticator_data = {}
 		authenticator_data['authenticator-vno'] = krb5_pvno
 		authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
