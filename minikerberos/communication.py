@@ -326,7 +326,7 @@ class KerbrosComm:
 		authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
 		authenticator_data['cname'] = self.kerberos_TGT['cname']
 		authenticator_data['cusec'] = now.microsecond
-		authenticator_data['ctime'] = now
+		authenticator_data['ctime'] = now.replace(microsecond=0)
 		
 		if is_linux:
 			ac = AuthenticatorChecksum()
@@ -397,7 +397,7 @@ class KerbrosComm:
 		authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
 		authenticator_data['cname'] = self.kerberos_TGT['cname']
 		authenticator_data['cusec'] = now.microsecond
-		authenticator_data['ctime'] = now
+		authenticator_data['ctime'] = now.replace(microsecond=0)
 		
 		authenticator_data_enc = self.kerberos_cipher.encrypt(self.kerberos_session_key, 7, Authenticator(authenticator_data).dump(), None)
 		
@@ -496,7 +496,7 @@ class KerbrosComm:
 		authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
 		authenticator_data['cname'] = self.kerberos_TGT['cname']
 		authenticator_data['cusec'] = now.microsecond
-		authenticator_data['ctime'] = now
+		authenticator_data['ctime'] = now.replace(microsecond=0)
 		
 		authenticator_data_enc = self.kerberos_cipher.encrypt(self.kerberos_session_key, 7, Authenticator(authenticator_data).dump(), None)
 		
@@ -547,7 +547,7 @@ class KerbrosComm:
 		authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
 		authenticator_data['cname'] = self.kerberos_TGT['cname']
 		authenticator_data['cusec'] = now.microsecond
-		authenticator_data['ctime'] = now
+		authenticator_data['ctime'] = now.replace(microsecond=0)
 		
 		cipher = _enctype_table[encTGSRepPart['key']['keytype']]
 		authenticator_data_enc = cipher.encrypt(sessionkey, 11, Authenticator(authenticator_data).dump(), None)
