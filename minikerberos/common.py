@@ -315,6 +315,15 @@ class KerberosTarget:
 		
 	# https://docs.microsoft.com/en-us/windows/desktop/ad/name-formats-for-unique-spns
 	#def from_spn(self):
+
+	@staticmethod
+	def from_user_email(s):
+		#not actually email, but whatever
+		kt = KerberosTarget()
+		if s.find('@') == -1:
+			raise Exception('Incorrect format, @ sign is missing!')
+		kt.username, kt.domain = s.split('@')
+		return kt
 	
 	@staticmethod
 	def from_target_string(s):
@@ -341,6 +350,9 @@ class KerberosTarget:
 		if self.service:
 			return '%s/%s@%s' % (self.service, self.username, self.domain)
 		return '%s@%s' % (self.username, self.domain)
+	
+	def __str__(self):
+		return self.get_formatted_pname()
 
 def print_table(lines, separate_head=True):
 	"""Prints a formatted table given a 2 dimensional array"""

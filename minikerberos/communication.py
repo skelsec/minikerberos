@@ -177,7 +177,7 @@ class KerbrosComm:
 		pa_data_1['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
 		pa_data_1['padata-value'] = PA_PAC_REQUEST({'include-pac': True}).dump()
 		
-		now = datetime.datetime.now(datetime.timezone.utc) #datetime.datetime.utcnow()
+		now = datetime.datetime.now(datetime.timezone.utc)
 		#creating timestamp asn1
 		timestamp = PA_ENC_TS_ENC({'patimestamp': now.replace(microsecond=0), 'pausec': now.microsecond}).dump()
 		
@@ -202,7 +202,7 @@ class KerbrosComm:
 		kdc_req_body['till']  = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['rtime'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['nonce'] = secrets.randbits(31)
-		kdc_req_body['etype'] = [supp_enc.value] #selecting according to server's preferences
+		kdc_req_body['etype'] = [supp_enc.value]
 
 		kdc_req = {}
 		kdc_req['pvno'] = krb5_pvno
@@ -223,8 +223,8 @@ class KerbrosComm:
 			2. Depending on the response (either error or AS_REP with TGT) we either send another AS_REQ with the encrypted data or return the TGT (or fail miserably)
 			3. PROFIT
 		"""
-		logger.debug('Generating initial TGT without authentication data')
-		now = datetime.datetime.now(datetime.timezone.utc) #datetime.datetime.utcnow()
+		logger.debug('[getTGT] Generating initial TGT without authentication data')
+		now = datetime.datetime.now(datetime.timezone.utc)
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','proxiable']))
 		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
@@ -250,7 +250,7 @@ class KerbrosComm:
 
 		req = AS_REQ(kdc_req)	
 		
-		logger.debug('Sending initial TGT to %s' % self.ksoc.get_addr_str())
+		logger.debug('[getTGT] Sending initial TGT to %s' % self.ksoc.get_addr_str())
 		rep = self.ksoc.sendrecv(req.dump(), throw = False)
 
 		if rep.name != 'KRB_ERROR':
@@ -274,10 +274,10 @@ class KerbrosComm:
 			if rep.native['error-code'] != KerberosErrorCode.KDC_ERR_PREAUTH_REQUIRED.value:
 				raise KerberosError(rep)
 			rep = rep.native
-			logger.debug('Got reply from server, asking to provide auth data')
+			logger.debug('[getTGT] Got reply from server, asking to provide auth data')
 			
 			rep = self.do_preauth(rep)
-			logger.debug('Got valid TGT response from server')
+			logger.debug('[getTGT] Got valid response from server')
 			rep = rep.native
 			self.kerberos_TGT = rep
 
@@ -286,16 +286,16 @@ class KerbrosComm:
 		try:
 			self.kerberos_TGT_encpart = EncASRepPart.load(temp).native
 		except Exception as e:
-			logger.debug('EncAsRepPart load failed, is this linux?')
+			logger.debug('[getTGT] EncAsRepPart load failed, is this linux?')
 			try:
 				self.kerberos_TGT_encpart = EncTGSRepPart.load(temp).native
 			except Exception as e:
-				logger.error('Failed to load decrypted part of the reply!')
+				logger.error('[getTGT] Failed to load decrypted part of the reply!')
 				raise e
 				
 		self.kerberos_session_key = Key(self.kerberos_cipher.enctype, self.kerberos_TGT_encpart['key']['keyvalue'])
 		self.ccache.add_tgt(self.kerberos_TGT, self.kerberos_TGT_encpart, override_pp = True)
-		logger.debug('Got valid TGT')
+		logger.debug('[getTGT] Got valid TGT')
 		
 		return 
 		
@@ -307,9 +307,9 @@ class KerbrosComm:
 		spn_user: KerberosTarget: the service user you want to get TGS for.
 		override_etype: None or list of etype values (int) Used mostly for kerberoasting, will override the AP_REQ supported etype values (which is derived from the TGT) to be able to recieve whatever tgs tiecket 
 		"""
-		#construct tgs_req
-		logger.debug('Constructing TGS request for user %s' % spn_user.get_formatted_pname())
-		now = datetime.datetime.now(datetime.timezone.utc) #datetime.datetime.utcnow()
+
+		logger.debug('[getTGS] Constructing request for user %s' % spn_user.get_formatted_pname())
+		now = datetime.datetime.now(datetime.timezone.utc)
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','renewable_ok', 'canonicalize']))
 		kdc_req_body['realm'] = spn_user.domain.upper()
@@ -362,33 +362,32 @@ class KerbrosComm:
 		kdc_req['req-body'] = KDC_REQ_BODY(kdc_req_body)
 		
 		req = TGS_REQ(kdc_req)
-		logger.debug('Constructing TGS request to server')
+		logger.debug('[getTGS] Constructing request to server')
 		rep = self.ksoc.sendrecv(req.dump())
-		logger.debug('Got TGS reply, decrypting...')
+		logger.debug('[getTGS] Got reply, decrypting...')
 		tgs = rep.native
 		
 		encTGSRepPart = EncTGSRepPart.load(self.kerberos_cipher.decrypt(self.kerberos_session_key, 8, tgs['enc-part']['cipher'])).native
 		key = Key(encTGSRepPart['key']['keytype'], encTGSRepPart['key']['keyvalue'])
 		
 		self.ccache.add_tgs(tgs, encTGSRepPart)
-		logger.debug('Got valid TGS reply')
+		logger.debug('[getTGS] Got valid reply')
 		self.kerberos_TGS = tgs
 		return tgs, encTGSRepPart, key
 	
 	#https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/6a8dfc0c-2d32-478a-929f-5f9b1b18a169
 	def S4U2self(self, user_to_impersonate, supp_enc_methods = [EncryptionType.DES_CBC_CRC,EncryptionType.DES_CBC_MD4,EncryptionType.DES_CBC_MD5,EncryptionType.DES3_CBC_SHA1,EncryptionType.ARCFOUR_HMAC_MD5,EncryptionType.AES256_CTS_HMAC_SHA1_96,EncryptionType.AES128_CTS_HMAC_SHA1_96]):
-	#def S4U2self(self, user_to_impersonate, spn_user, supp_enc_methods = [EncryptionType.DES_CBC_CRC,EncryptionType.DES_CBC_MD4,EncryptionType.DES_CBC_MD5,EncryptionType.DES3_CBC_SHA1,EncryptionType.ARCFOUR_HMAC_MD5,EncryptionType.AES256_CTS_HMAC_SHA1_96,EncryptionType.AES128_CTS_HMAC_SHA1_96]):
 		"""
 		user_to_impersonate : KerberosTarget class
 		"""
 		
 		if not self.kerberos_TGT:
-			logger.debug('S4U2self invoked, but TGT is not available! Fetching TGT...')
+			logger.debug('[S4U2self] TGT is not available! Fetching TGT...')
 			self.get_TGT()
 		
 		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
 		auth_package_name = 'Kerberos'
-		now = datetime.datetime.now(datetime.timezone.utc) #datetime.datetime.utcnow()
+		now = datetime.datetime.now(datetime.timezone.utc)
 		
 		
 		###### Calculating authenticator data
@@ -418,11 +417,11 @@ class KerbrosComm:
 		S4UByteArray += user_to_impersonate.username.encode()
 		S4UByteArray += user_to_impersonate.domain.encode()
 		S4UByteArray += auth_package_name.encode()
-		logger.debug('S4U2self: S4UByteArray: %s' % S4UByteArray.hex())
-		logger.debug('S4U2self: S4UByteArray: %s' % S4UByteArray)
+		logger.debug('[S4U2self] S4UByteArray: %s' % S4UByteArray.hex())
+		logger.debug('[S4U2self] S4UByteArray: %s' % S4UByteArray)
 		
 		chksum_data = _HMACMD5.checksum(self.kerberos_session_key, 17, S4UByteArray)
-		logger.debug('S4U2self: chksum_data: %s' % chksum_data.hex())
+		logger.debug('[S4U2self] chksum_data: %s' % chksum_data.hex())
 		
 		
 		chksum = {}
@@ -460,30 +459,31 @@ class KerbrosComm:
 		
 		req = TGS_REQ(krb_tgs_req)
 		
-		logger.debug('Sending S4U2self request to server')
+		logger.debug('[S4U2self] Sending request to server')
 		try:
 			reply = self.ksoc.sendrecv(req.dump())
 		except KerberosError as e:
 			if e.errorcode.value == 16:
-				logger.error('S4U2self: Failed to get S4U2self! Error code (16) indicates that delegation is not enabled for this account! Full error: %s' % e)
+				logger.error('[S4U2self] Failed to get S4U2self! Error code (16) indicates that delegation is not enabled for this account! Full error: %s' % e)
 			
 			raise e
 		
-		logger.debug('Got S4U2self reply, decrypting...')
+		logger.debug('[S4U2self] Got reply, decrypting...')
 		tgs = reply.native
 		
 		encTGSRepPart = EncTGSRepPart.load(self.kerberos_cipher.decrypt(self.kerberos_session_key, 8, tgs['enc-part']['cipher'])).native
 		key = Key(encTGSRepPart['key']['keytype'], encTGSRepPart['key']['keyvalue'])
 		
 		self.ccache.add_tgs(tgs, encTGSRepPart)
-		logger.debug('Got valid TGS reply')
+		logger.debug('[S4U2self] Got valid TGS reply')
 		self.kerberos_TGS = tgs
 		return tgs, encTGSRepPart, key
 				
 		
 	# https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/c920c148-8a9c-42e9-b8e9-db5755cd281b
 	def S4U2proxy(self, s4uself_ticket, spn_user, supp_enc_methods = [EncryptionType.DES_CBC_CRC,EncryptionType.DES_CBC_MD4,EncryptionType.DES_CBC_MD5,EncryptionType.DES3_CBC_SHA1,EncryptionType.ARCFOUR_HMAC_MD5,EncryptionType.AES256_CTS_HMAC_SHA1_96,EncryptionType.AES128_CTS_HMAC_SHA1_96]):
-		now = datetime.datetime.now(datetime.timezone.utc) #datetime.datetime.utcnow() 
+		logger.debug('[S4U2proxy] Impersonating %s' % '/'.join(spn_user.get_principalname()))
+		now = datetime.datetime.now(datetime.timezone.utc)
 		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
 		
 		pa_pac_opts = {}
@@ -513,7 +513,6 @@ class KerbrosComm:
 		
 		
 		krb_tgs_body = {}
-		#krb_tgs_body['kdc-options'] = KDCOptions(set(['forwardable','forwarded','renewable','renewable-ok', 'canonicalize']))
 		krb_tgs_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','constrained-delegation', 'canonicalize']))
 		krb_tgs_body['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': spn_user.get_principalname()})
 		krb_tgs_body['realm'] = self.usercreds.domain.upper()
@@ -530,7 +529,7 @@ class KerbrosComm:
 		krb_tgs_req['req-body'] = KDC_REQ_BODY(krb_tgs_body)
 		
 		req = TGS_REQ(krb_tgs_req)
-		
+		logger.debug('[S4U2proxy] Sending request to server')
 		try:
 			reply = self.ksoc.sendrecv(req.dump())
 		except KerberosError as e:
@@ -538,16 +537,57 @@ class KerbrosComm:
 				logger.error('S4U2proxy: Failed to get S4U2proxy! Error code (16) indicates that delegation is not enabled for this account! Full error: %s' % e)
 			
 			raise e
-			
+		logger.debug('[S4U2proxy] Got server reply, decrypting...')
+		tgs = reply.native
 		
-	def get_something(self, tgs, encTGSRepPart, sessionkey):
-		now = datetime.datetime.now(datetime.timezone.utc) #datetime.datetime.utcnow()
+		encTGSRepPart = EncTGSRepPart.load(self.kerberos_cipher.decrypt(self.kerberos_session_key, 8, tgs['enc-part']['cipher'])).native
+		key = Key(encTGSRepPart['key']['keytype'], encTGSRepPart['key']['keyvalue'])
+		
+		self.ccache.add_tgs(tgs, encTGSRepPart)
+		logger.debug('[S4U2proxy] Got valid TGS reply')
+
+		return tgs, encTGSRepPart, key
+		
+	#def get_something(self, tgs, encTGSRepPart, sessionkey):
+	#	now = datetime.datetime.now(datetime.timezone.utc)
+	#	authenticator_data = {}
+	#	authenticator_data['authenticator-vno'] = krb5_pvno
+	#	authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
+	#	authenticator_data['cname'] = self.kerberos_TGT['cname']
+	#	authenticator_data['cusec'] = now.microsecond
+	#	authenticator_data['ctime'] = now.replace(microsecond=0)
+	#	
+	#	cipher = _enctype_table[encTGSRepPart['key']['keytype']]
+	#	authenticator_data_enc = cipher.encrypt(sessionkey, 11, Authenticator(authenticator_data).dump(), None)
+	#	
+	#	ap_req = {}
+	#	ap_req['pvno'] = krb5_pvno
+	#	ap_req['msg-type'] = MESSAGE_TYPE.KRB_AP_REQ.value
+	#	ap_req['ticket'] = Ticket(tgs['ticket'])
+	#	ap_req['ap-options'] = APOptions(set([]))
+	#	ap_req['authenticator'] = EncryptedData({'etype': self.kerberos_cipher_type, 'cipher': authenticator_data_enc})
+	#
+	#	return AP_REQ(ap_req).dump()
+
+	def construct_apreq(self, tgs, encTGSRepPart, sessionkey, flags = None, seq_number = 0, ap_opts = []):
+		now = datetime.datetime.now(datetime.timezone.utc)
 		authenticator_data = {}
 		authenticator_data['authenticator-vno'] = krb5_pvno
 		authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
 		authenticator_data['cname'] = self.kerberos_TGT['cname']
 		authenticator_data['cusec'] = now.microsecond
 		authenticator_data['ctime'] = now.replace(microsecond=0)
+		if flags is not None:
+			ac = AuthenticatorChecksum()
+			ac.flags = flags
+			ac.channel_binding = b'\x00'*16
+			
+			chksum = {}
+			chksum['cksumtype'] = 0x8003
+			chksum['checksum'] = ac.to_bytes()
+			
+			authenticator_data['cksum'] = Checksum(chksum)
+			authenticator_data['seq-number'] = seq_number
 		
 		cipher = _enctype_table[encTGSRepPart['key']['keytype']]
 		authenticator_data_enc = cipher.encrypt(sessionkey, 11, Authenticator(authenticator_data).dump(), None)
@@ -556,8 +596,48 @@ class KerbrosComm:
 		ap_req['pvno'] = krb5_pvno
 		ap_req['msg-type'] = MESSAGE_TYPE.KRB_AP_REQ.value
 		ap_req['ticket'] = Ticket(tgs['ticket'])
-		ap_req['ap-options'] = APOptions(set([]))
+		ap_req['ap-options'] = APOptions(set(ap_opts))
 		ap_req['authenticator'] = EncryptedData({'etype': self.kerberos_cipher_type, 'cipher': authenticator_data_enc})
 
 		return AP_REQ(ap_req).dump()
+
+	@staticmethod
+	def construct_apreq_from_ticket(ticket_data, sessionkey, crealm, cname, flags = None, seq_number = 0, ap_opts = []):
+		"""
+		ticket: bytes of Ticket
+		"""
+		now = datetime.datetime.now(datetime.timezone.utc)
+		authenticator_data = {}
+		authenticator_data['authenticator-vno'] = krb5_pvno
+		authenticator_data['crealm'] = Realm(crealm)
+		authenticator_data['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [cname]})
+		authenticator_data['cusec'] = now.microsecond
+		authenticator_data['ctime'] = now.replace(microsecond=0)
+		if flags is not None:
+			ac = AuthenticatorChecksum()
+			ac.flags = flags
+			ac.channel_binding = b'\x00'*16
+			
+			chksum = {}
+			chksum['cksumtype'] = 0x8003
+			chksum['checksum'] = ac.to_bytes()
+			
+			authenticator_data['cksum'] = Checksum(chksum)
+			authenticator_data['seq-number'] = seq_number
 		
+		cipher = _enctype_table[sessionkey.enctype]
+		authenticator_data_enc = cipher.encrypt(sessionkey, 11, Authenticator(authenticator_data).dump(), None)
+		
+		ap_req = {}
+		ap_req['pvno'] = krb5_pvno
+		ap_req['msg-type'] = MESSAGE_TYPE.KRB_AP_REQ.value
+		ap_req['ticket'] = Ticket.load(ticket_data)
+		ap_req['ap-options'] = APOptions(set(ap_opts))
+		ap_req['authenticator'] = EncryptedData({'etype': sessionkey.enctype, 'cipher': authenticator_data_enc})
+
+		return AP_REQ(ap_req).dump()
+		
+
+	def getST(self, target_user, service_spn):
+		tgs, encTGSRepPart, key = self.S4U2self(target_user)
+		return self.S4U2proxy(tgs['ticket'], service_spn)

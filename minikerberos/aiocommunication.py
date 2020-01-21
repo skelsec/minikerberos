@@ -81,7 +81,7 @@ class KerberosSocketAIO:
 				data = await self.reader.readexactly(length)
 				
 			elif self.soc_type == KerberosSocketType.UDP:
-				raise exception('Not implemented!')
+				raise Exception('Not implemented!')
 			
 			krb_message = KerberosResponse.load(data)
 			return krb_message
@@ -113,7 +113,7 @@ class KerbrosCommAIO:
 		Sets up the kerberos object from tgt and the session key.
 		Use this function when pulling the TGT from ccache file.
 		"""
-		kc = KerbrosComm(None, ksoc)
+		kc = KerbrosCommAIO(None, ksoc)
 		kc.kerberos_TGT = tgt
 		
 		kc.kerberos_cipher_type = key['keytype']
@@ -145,9 +145,9 @@ class KerbrosCommAIO:
 		pa_data_1['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
 		pa_data_1['padata-value'] = PA_PAC_REQUEST({'include-pac': True}).dump()
 		
-		now = datetime.datetime.utcnow()
+		now = datetime.datetime.now(datetime.timezone.utc)
 		#creating timestamp asn1
-		timestamp = PA_ENC_TS_ENC({'patimestamp': now, 'pausec': now.microsecond}).dump()
+		timestamp = PA_ENC_TS_ENC({'patimestamp': now.replace(microsecond=0), 'pausec': now.microsecond}).dump()
 		
 		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
 		logger.debug('Selecting common encryption type: %s' % supp_enc.name)
@@ -163,18 +163,15 @@ class KerbrosCommAIO:
 		pa_data_2['padata-type'] = int(PADATA_TYPE('ENC-TIMESTAMP'))
 		pa_data_2['padata-value'] = EncryptedData({'etype': supp_enc.value, 'cipher': enc_timestamp}).dump()
 		
-		
-		
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','proxiable']))
 		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
 		kdc_req_body['realm'] = self.usercreds.domain.upper()
 		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
-		kdc_req_body['till'] = now + datetime.timedelta(days=1)
-		kdc_req_body['rtime'] = now + datetime.timedelta(days=1)
+		kdc_req_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
+		kdc_req_body['rtime'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['nonce'] = secrets.randbits(31)
 		kdc_req_body['etype'] = [supp_enc.value] #selecting according to server's preferences
-		
 		
 		kdc_req = {}
 		kdc_req['pvno'] = krb5_pvno
@@ -199,14 +196,14 @@ class KerbrosCommAIO:
 			3. PROFIT
 		"""
 		logger.debug('Generating initial TGT without authentication data')
-		now = datetime.datetime.utcnow()
+		now = datetime.datetime.now(datetime.timezone.utc)
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','proxiable']))
 		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
 		kdc_req_body['realm'] = self.usercreds.domain.upper()
 		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
-		kdc_req_body['till'] = now + datetime.timedelta(days=1)
-		kdc_req_body['rtime'] = now + datetime.timedelta(days=1)
+		kdc_req_body['till']  = (now + datetime.timedelta(days=1)).replace(microsecond=0)
+		kdc_req_body['rtime'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['nonce'] = secrets.randbits(31)
 		if override_etype is None:
 			kdc_req_body['etype'] = self.usercreds.get_supported_enctypes()
@@ -281,12 +278,12 @@ class KerbrosCommAIO:
 		"""
 		#construct tgs_req
 		logger.debug('Constructing TGS request for user %s' % spn_user.get_formatted_pname())
-		now = datetime.datetime.utcnow() 
+		now = datetime.datetime.now(datetime.timezone.utc)
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','renewable_ok', 'canonicalize']))
 		kdc_req_body['realm'] = spn_user.domain.upper()
 		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': spn_user.get_principalname()})
-		kdc_req_body['till'] = now + datetime.timedelta(days=1)
+		kdc_req_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['nonce'] = secrets.randbits(31)
 		if override_etype:
 			kdc_req_body['etype'] = override_etype
@@ -298,7 +295,7 @@ class KerbrosCommAIO:
 		authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
 		authenticator_data['cname'] = self.kerberos_TGT['cname']
 		authenticator_data['cusec'] = now.microsecond
-		authenticator_data['ctime'] = now
+		authenticator_data['ctime'] = now.replace(microsecond=0)
 		
 		if is_linux:
 			ac = AuthenticatorChecksum()
@@ -362,7 +359,7 @@ class KerbrosCommAIO:
 		
 		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
 		auth_package_name = 'Kerberos'
-		now = datetime.datetime.utcnow() 
+		now = datetime.datetime.now(datetime.timezone.utc)
 		
 		
 		###### Calculating authenticator data
@@ -371,7 +368,7 @@ class KerbrosCommAIO:
 		authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
 		authenticator_data['cname'] = self.kerberos_TGT['cname']
 		authenticator_data['cusec'] = now.microsecond
-		authenticator_data['ctime'] = now
+		authenticator_data['ctime'] = now.replace(microsecond=0)
 		
 		authenticator_data_enc = self.kerberos_cipher.encrypt(self.kerberos_session_key, 7, Authenticator(authenticator_data).dump(), None)
 		
@@ -421,7 +418,7 @@ class KerbrosCommAIO:
 		krb_tgs_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','canonicalize']))
 		krb_tgs_body['sname'] = PrincipalName({'name-type': NAME_TYPE.UNKNOWN.value, 'name-string': [self.usercreds.username]})
 		krb_tgs_body['realm'] = self.usercreds.domain.upper()
-		krb_tgs_body['till'] = now + datetime.timedelta(days=1)
+		krb_tgs_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		krb_tgs_body['nonce'] = secrets.randbits(31)
 		krb_tgs_body['etype'] = [supp_enc.value] #selecting according to server's preferences
 		
@@ -439,7 +436,7 @@ class KerbrosCommAIO:
 		reply = await self.ksoc.sendrecv(req.dump())
 		if reply.name == 'KRB_ERROR':
 			if reply.native['error-code'] == 16:
-				logger.error('S4U2self: Failed to get S4U2self! Error code (16) indicates that delegation is not enabled for this account! Full error: %s' % e)
+				logger.error('S4U2self: Failed to get S4U2self! Error code (16) indicates that delegation is not enabled for this account!')
 			
 			raise Exception('S4U2self failed! %s' % str(reply))
 		
@@ -457,7 +454,7 @@ class KerbrosCommAIO:
 		
 	# https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/c920c148-8a9c-42e9-b8e9-db5755cd281b
 	async def S4U2proxy(self, s4uself_ticket, spn_user, supp_enc_methods = [EncryptionType.DES_CBC_CRC,EncryptionType.DES_CBC_MD4,EncryptionType.DES_CBC_MD5,EncryptionType.DES3_CBC_SHA1,EncryptionType.ARCFOUR_HMAC_MD5,EncryptionType.AES256_CTS_HMAC_SHA1_96,EncryptionType.AES128_CTS_HMAC_SHA1_96]):
-		now = datetime.datetime.utcnow() 
+		now = datetime.datetime.now(datetime.timezone.utc)
 		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
 		
 		pa_pac_opts = {}
@@ -470,7 +467,7 @@ class KerbrosCommAIO:
 		authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
 		authenticator_data['cname'] = self.kerberos_TGT['cname']
 		authenticator_data['cusec'] = now.microsecond
-		authenticator_data['ctime'] = now
+		authenticator_data['ctime'] = now.replace(microsecond=0)
 		
 		authenticator_data_enc = self.kerberos_cipher.encrypt(self.kerberos_session_key, 7, Authenticator(authenticator_data).dump(), None)
 		
@@ -491,7 +488,7 @@ class KerbrosCommAIO:
 		krb_tgs_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','constrained-delegation', 'canonicalize']))
 		krb_tgs_body['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': spn_user.get_principalname()})
 		krb_tgs_body['realm'] = self.usercreds.domain.upper()
-		krb_tgs_body['till'] = now + datetime.timedelta(days=1)
+		krb_tgs_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		krb_tgs_body['nonce'] = secrets.randbits(31)
 		krb_tgs_body['etype'] = [supp_enc.value] #selecting according to server's preferences
 		krb_tgs_body['additional-tickets'] = [s4uself_ticket]
@@ -508,19 +505,19 @@ class KerbrosCommAIO:
 		reply = await self.ksoc.sendrecv(req.dump())
 		if reply.name == 'KRB_ERROR':
 			if reply.native['error-code'] == 16:
-				logger.error('S4U2proxy: Failed to get S4U2proxy! Error code (16) indicates that delegation is not enabled for this account! Full error: %s' % e)
+				logger.error('S4U2proxy: Failed to get S4U2proxy! Error code (16) indicates that delegation is not enabled for this account!')
 			
 			raise Exception('S4U2proxy failed! %s' % str(reply))
 			
 		
 	def construct_apreq(self, tgs, encTGSRepPart, sessionkey, flags = None, seq_number = 0, ap_opts = []):
-		now = datetime.datetime.utcnow() 
+		now = datetime.datetime.now(datetime.timezone.utc)
 		authenticator_data = {}
 		authenticator_data['authenticator-vno'] = krb5_pvno
 		authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
 		authenticator_data['cname'] = self.kerberos_TGT['cname']
 		authenticator_data['cusec'] = now.microsecond
-		authenticator_data['ctime'] = now
+		authenticator_data['ctime'] = now.replace(microsecond=0)
 		if flags is not None:
 			ac = AuthenticatorChecksum()
 			ac.flags = flags
@@ -550,13 +547,13 @@ class KerbrosCommAIO:
 		"""
 		ticket: bytes of Ticket
 		"""
-		now = datetime.datetime.utcnow() 
+		now = datetime.datetime.now(datetime.timezone.utc)
 		authenticator_data = {}
 		authenticator_data['authenticator-vno'] = krb5_pvno
 		authenticator_data['crealm'] = Realm(crealm)
 		authenticator_data['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [cname]})
 		authenticator_data['cusec'] = now.microsecond
-		authenticator_data['ctime'] = now
+		authenticator_data['ctime'] = now.replace(microsecond=0)
 		if flags is not None:
 			ac = AuthenticatorChecksum()
 			ac.flags = flags
