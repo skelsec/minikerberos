@@ -17,14 +17,14 @@ class KerberosUserEnum:
 		self.ksoc = ksoc
 
 	def construct_tgt_req(realm, username):
-		now = datetime.datetime.utcnow()
+		now = now = datetime.datetime.now(datetime.timezone.utc)
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','proxiable']))
 		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [username]})
 		kdc_req_body['realm'] = realm.upper()
 		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', realm.upper()]})
-		kdc_req_body['till'] = now + datetime.timedelta(days=1)
-		kdc_req_body['rtime'] = now + datetime.timedelta(days=1)
+		kdc_req_body['till']  = (now + datetime.timedelta(days=1)).replace(microsecond=0)
+		kdc_req_body['rtime'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['nonce'] = secrets.randbits(31)
 		kdc_req_body['etype'] = [2, 3, 16, 23, 17, 18] #we "support" all MS related enctypes
 		
