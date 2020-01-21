@@ -16,6 +16,7 @@ class KerberosUserEnum:
 	def __init__(self, ksoc):
 		self.ksoc = ksoc
 
+	@staticmethod
 	def construct_tgt_req(realm, username):
 		now = now = datetime.datetime.now(datetime.timezone.utc)
 		kdc_req_body = {}
