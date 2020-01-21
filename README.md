@@ -29,6 +29,9 @@ capable of.
 - `getTGS.py` same as `getTGT.py` but also gets a TGS ticket for a given
   service from the domain controller.
 
+- `getS4U2proxy.py` to be used for getting a TGS ticket on behalf of another user.   
+   Basically it performs a kerberos constrained delegation process.
+
   
 ## Installation
 
