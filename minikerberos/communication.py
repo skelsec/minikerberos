@@ -48,7 +48,7 @@ class KerberosSocket:
 		
 		ip = None
 		port = 88
-		t, addr = s.rsplit('@')
+		t, addr = s.rsplit('@', 1)
 		if addr.find(':') == -1:
 			ip = addr
 		else:
