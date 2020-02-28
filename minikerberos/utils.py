@@ -28,6 +28,6 @@ def TGTTicket2hashcat(res):
 	tgt_checksum           = res['enc-part']['cipher'][:16]
 	tgt_encrypted_data2    = res['enc-part']['cipher'][16:]
 	
-	return '$krb5asrep$%s$%s$%s$%s$%s' % (tgt_encryption_type,tgt_name_string, tgt_realm, tgt_checksum.hex(), tgt_encrypted_data2.hex())
+	return '$krb5asrep$%s$%s@%s:%s$%s' % (tgt_encryption_type,tgt_name_string, tgt_realm, tgt_checksum.hex(), tgt_encrypted_data2.hex())
 	#$krb5asrep$23$checksum$edata2
 	
