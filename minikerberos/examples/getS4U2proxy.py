@@ -14,24 +14,7 @@ from minikerberos.common.spn import KerberosSPN
 
 import pprint
 
-def main():
-	import argparse
-	
-	parser = argparse.ArgumentParser(description='Gets an S4U2proxy ticket impersonating given user', formatter_class=argparse.RawDescriptionHelpFormatter, epilog = kerberos_url_help_epilog)
-	parser.add_argument('kerberos_connection_url', help='the kerberos target string in the following format <domain>/<username>/<secret_type>:<secret>@<domaincontroller-ip>')
-	parser.add_argument('spn', help='the service principal in format <service>/<server-hostname>@<domain> Example: cifs/fileserver.test.corp@TEST.corp for a TGS ticket to be used for file access on server "fileserver". IMPORTANT: SERVER\'S HOSTNAME MUST BE USED, NOT IP!!!')
-	parser.add_argument('targetuser', help='')
-	parser.add_argument('ccache', help='ccache file to store the TGT ticket in')
-	parser.add_argument('-v', '--verbose', action='count', default=0)
-	
-	args = parser.parse_args()
-	if args.verbose == 0:
-		logger.setLevel(logging.WARNING)
-	elif args.verbose == 1:
-		logger.setLevel(logging.INFO)
-	else:
-		logger.setLevel(1)
-	
+async def amain(args):
 	cu = KerberosClientURL.from_url(args.kerberos_connection_url)
 	ccred = cu.get_creds()
 	target = cu.get_target()
@@ -62,6 +45,28 @@ def main():
 
 	client.ccache.to_file(args.ccache)	
 	logger.info('Done!')
+
+
+def main():
+	import argparse
+	
+	parser = argparse.ArgumentParser(description='Gets an S4U2proxy ticket impersonating given user', formatter_class=argparse.RawDescriptionHelpFormatter, epilog = kerberos_url_help_epilog)
+	parser.add_argument('kerberos_connection_url', help='the kerberos target string in the following format <domain>/<username>/<secret_type>:<secret>@<domaincontroller-ip>')
+	parser.add_argument('spn', help='the service principal in format <service>/<server-hostname>@<domain> Example: cifs/fileserver.test.corp@TEST.corp for a TGS ticket to be used for file access on server "fileserver". IMPORTANT: SERVER\'S HOSTNAME MUST BE USED, NOT IP!!!')
+	parser.add_argument('targetuser', help='')
+	parser.add_argument('ccache', help='ccache file to store the TGT ticket in')
+	parser.add_argument('-v', '--verbose', action='count', default=0)
+	
+	args = parser.parse_args()
+	if args.verbose == 0:
+		logger.setLevel(logging.WARNING)
+	elif args.verbose == 1:
+		logger.setLevel(logging.INFO)
+	else:
+		logger.setLevel(1)
+
+	asyncio.run(amain(args))
+	
 	
 if __name__ == '__main__':
 	main()

@@ -10,7 +10,7 @@ from minikerberos.common.url import KerberosClientURL, kerberos_url_help_epilog
 from minikerberos.common.spn import KerberosSPN
 from minikerberos.aioclient import AIOKerberosClient
 
-def amain(args):
+async def amain(args):
 
 	if args.spn.find('@') == -1:
 		raise Exception('SPN must contain @')
