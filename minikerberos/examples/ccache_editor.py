@@ -7,8 +7,8 @@ import os
 import logging
 import ntpath
 
-from minikerberos.ccache import CCACHE, Credential
-from minikerberos.common import print_table
+from minikerberos.common.ccache import CCACHE, Credential
+from minikerberos.common.utils import print_table
 
 def main():
 	import argparse

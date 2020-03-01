@@ -8,11 +8,12 @@ import os
 import io
 import datetime
 import glob
-import logging
 import hashlib
-from minikerberos.asn1_structs import *
-from minikerberos.utils import dt_to_kerbtime, TGSTicket2hashcat
-from minikerberos.constants import *
+
+from minikerberos.protocol.asn1_structs import Ticket, EncryptedData, \
+	krb5_pvno, KrbCredInfo, EncryptionKey, KRBCRED, TicketFlags, EncKrbCredPart
+from minikerberos.common.utils import dt_to_kerbtime, TGSTicket2hashcat
+from minikerberos.protocol.constants import EncryptionType, MESSAGE_TYPE
 from minikerberos import logger
 from asn1crypto import core
 
@@ -56,7 +57,8 @@ class DateTime:
 	def __init__(self):
 		self.time_offset = None
 		self.usec_offset = None
-		
+	
+	@staticmethod
 	def parse(reader):
 		d = DateTime()
 		d.time_offset = int.from_bytes(reader.read(4), byteorder='big', signed=False)
@@ -151,7 +153,7 @@ class Credential:
 		kirbi = KRBCRED(krbcred)
 		return kirbi, filename
 
-		
+	@staticmethod
 	def from_asn1(ticket, data):
 		###
 		# data  = KrbCredInfo 
@@ -168,7 +170,8 @@ class Credential:
 		c.ticket = CCACHEOctetString.from_asn1(ticket['enc-part']['cipher'])
 		c.second_ticket = CCACHEOctetString.empty()
 		return c
-		
+	
+	@staticmethod
 	def parse(reader):
 		c = Credential()
 		c.client = CCACHEPrincipal.parse(reader)
@@ -178,7 +181,7 @@ class Credential:
 		c.is_skey = int.from_bytes(reader.read(1), byteorder='big', signed=False)
 		c.tktflags = int.from_bytes(reader.read(4), byteorder='little', signed=False)
 		c.num_address = int.from_bytes(reader.read(4), byteorder='big', signed=False)
-		for i in range(c.num_address):
+		for _ in range(c.num_address):
 			c.addrs.append(Address.parse(reader))
 		c.num_authdata = int.from_bytes(reader.read(4), byteorder='big', signed=False)
 		for i in range(c.num_authdata):
@@ -186,7 +189,8 @@ class Credential:
 		c.ticket = CCACHEOctetString.parse(reader)
 		c.second_ticket = CCACHEOctetString.parse(reader)
 		return c
-		
+	
+	@staticmethod
 	def summary_header():
 		return ['client','server','starttime','endtime','renew-till']
 		
@@ -223,7 +227,8 @@ class Keyblock:
 		self.etype = None
 		self.keylen = None
 		self.keyvalue = None
-		
+	
+	@staticmethod
 	def from_asn1(data):
 		k = Keyblock()
 		k.keytype = data['keytype']
@@ -239,7 +244,8 @@ class Keyblock:
 		t['keyvalue'] = self.keyvalue
 		
 		return t
-		
+	
+	@staticmethod
 	def parse(reader):
 		k = Keyblock()
 		k.keytype = int.from_bytes(reader.read(2), byteorder='big', signed=False)
@@ -262,7 +268,8 @@ class Times:
 		self.starttime = None
 		self.endtime = None
 		self.renew_till = None
-		
+	
+	@staticmethod
 	def from_asn1(enc_as_rep_part):
 		t = Times()
 		if 'authtime' in enc_as_rep_part and enc_as_rep_part['authtime']:
@@ -277,7 +284,8 @@ class Times:
 		t.renew_till = dt_to_kerbtime(enc_as_rep_part['renew-till'])
 		
 		return t
-		
+	
+	@staticmethod
 	def dummy_time(start= datetime.datetime.now(datetime.timezone.utc)):
 		t = Times()
 		t.authtime = dt_to_kerbtime(start)
@@ -285,7 +293,8 @@ class Times:
 		t.endtime = dt_to_kerbtime(start + datetime.timedelta(days=1))
 		t.renew_till = dt_to_kerbtime(start + datetime.timedelta(days=2))
 		return t
-		
+	
+	@staticmethod
 	def parse(reader):
 		t = Times()
 		t.authtime = int.from_bytes(reader.read(4), byteorder='big', signed=False)
@@ -305,7 +314,8 @@ class Address:
 	def __init__(self):
 		self.addrtype = None
 		self.addrdata = None
-		
+	
+	@staticmethod
 	def parse(reader):
 		a = Address()
 		a.addrtype = int.from_bytes(reader.read(2), byteorder='big', signed=False)
@@ -322,6 +332,7 @@ class Authdata:
 		self.authtype = None
 		self.authdata = None
 	
+	@staticmethod
 	def parse(reader):
 		a = Authdata()
 		a.authtype = int.from_bytes(reader.read(2), byteorder='big', signed=False)
@@ -339,7 +350,8 @@ class CCACHEPrincipal:
 		self.num_components = None
 		self.realm = None
 		self.components = []
-		
+	
+	@staticmethod
 	def from_asn1(principal, realm):
 		p = CCACHEPrincipal()
 		p.name_type = principal['name-type']
@@ -350,12 +362,13 @@ class CCACHEPrincipal:
 			
 		return p
 	
+	@staticmethod
 	def dummy():
 		p = CCACHEPrincipal()
 		p.name_type = 1
 		p.num_components = 1
 		p.realm = CCACHEOctetString.from_string('kerbi.corp')
-		for i in range(1):
+		for _ in range(1):
 			p.components.append(CCACHEOctetString.from_string('kerbi'))
 			
 		return p
@@ -366,13 +379,14 @@ class CCACHEPrincipal:
 	def to_asn1(self):
 		t = {'name-type': self.name_type, 'name-string': [name.to_string() for name in self.components]}
 		return t, self.realm.to_string()		
-		
+	
+	@staticmethod
 	def parse(reader):
 		p = CCACHEPrincipal()
 		p.name_type = int.from_bytes(reader.read(4), byteorder='big', signed=False)
 		p.num_components = int.from_bytes(reader.read(4), byteorder='big', signed=False)
 		p.realm = CCACHEOctetString.parse(reader)
-		for i in range(p.num_components):
+		for _ in range(p.num_components):
 			p.components.append(CCACHEOctetString.parse(reader))
 		return p
 		
@@ -388,7 +402,8 @@ class CCACHEOctetString:
 	def __init__(self):
 		self.length = None
 		self.data = None
-		
+	
+	@staticmethod
 	def empty():
 		o = CCACHEOctetString()
 		o.length = 0
@@ -400,13 +415,15 @@ class CCACHEOctetString:
 		
 	def to_string(self):
 		return self.data.decode()
-		
+	
+	@staticmethod
 	def from_string(data):
 		o = CCACHEOctetString()
 		o.data = data.encode()
 		o.length = len(o.data)
 		return o
-		
+	
+	@staticmethod
 	def from_asn1(data):
 		o = CCACHEOctetString()
 		o.length = len(data)
@@ -416,6 +433,7 @@ class CCACHEOctetString:
 			o.data = data
 		return o
 	
+	@staticmethod
 	def parse(reader):
 		o = CCACHEOctetString()
 		o.length = int.from_bytes(reader.read(4), byteorder='big', signed=False)
@@ -543,7 +561,7 @@ class CCACHE:
 		#yaaaaay 4 additional weirdness!!!!
 		#if sname name-string contains a realm as well htne impacket will crash miserably :(
 		if len(ticket_info['sname']['name-string']) > 2 and ticket_info['sname']['name-string'][-1].upper() == ticket_info['srealm'].upper():
-			logging.debug('SNAME contains the realm as well, trimming it')
+			logger.debug('SNAME contains the realm as well, trimming it')
 			t = ticket_info['sname']
 			t['name-string'] = t['name-string'][:-1]
 			c.server = CCACHEPrincipal.from_asn1(t, ticket_info['srealm'])
@@ -563,7 +581,7 @@ class CCACHE:
 		
 		self.credentials.append(c)
 		
-		
+	@staticmethod
 	def from_kirbi(kirbidata):
 		kirbi = KRBCRED.load(kirbidata).native
 		cc = CCACHE()
@@ -596,7 +614,7 @@ class CCACHE:
 
 		return hashes
 		
-		
+	@staticmethod
 	def parse(reader):
 		c = CCACHE(True)
 		c.file_format_version = int.from_bytes(reader.read(2), byteorder='big', signed=False)
@@ -633,7 +651,8 @@ class CCACHE:
 		for cred in self.credentials:
 			t += cred.to_bytes()
 		return t
-		
+	
+	@staticmethod
 	def from_kirbifile(kirbi_filename):
 		kf_abs = os.path.abspath(kirbi_filename)
 		kirbidata = None
@@ -641,7 +660,8 @@ class CCACHE:
 			kirbidata = f.read()
 			
 		return CCACHE.from_kirbi(kirbidata)
-		
+	
+	@staticmethod
 	def from_kirbidir(directory_path):
 		"""
 		Iterates trough all .kirbi files in a given directory and converts all of them into one CCACHE object
@@ -670,7 +690,8 @@ class CCACHE:
 			filepath = os.path.join(kf_abs, filename)
 			with open(filepath, 'wb') as o:
 				o.write(kirbi.dump())
-		
+	
+	@staticmethod
 	def from_file(filename):
 		"""
 		Parses the ccache file and returns a CCACHE object

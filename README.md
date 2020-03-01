@@ -2,6 +2,13 @@
 
 Kerberos manipulation library in pure Python.
 
+# WARNING
+The library underwent some considerable restructuring from 0.1.X to 0.2.X and above.
+These changes will 100% likely to break your existing code, so either fix the version in your requirements or update your scripts.  
+  
+Sorry for the inconveinence, however I deemed it important to make these changes for a better API and usability. From version 0.2.0 and above the code will more focusing on asynchronous operation. Backport of additional features will happen to the blocking IO based classes, but expect some delays.
+
+
 ## Prerequisites
 
 - Python >= 3.6  

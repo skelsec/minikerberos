@@ -5,7 +5,7 @@
 #
 import os
 import logging
-from minikerberos.ccache import CCACHE
+from minikerberos.common.ccache import CCACHE
 
 def main():
 	import argparse

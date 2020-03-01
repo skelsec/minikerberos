@@ -757,7 +757,7 @@ class PA_FOR_USER_ENC(core.Sequence):
 	
 	]
 	
-class S4UUserID(core.BitString):
+class S4UUserIDOptions(core.BitString):
 	_map = {
 		0x40000000 : 'check-logon-hour', #This option causes the KDC to check logon hour restrictions for the user.
 		0x20000000 : 'signed-with-kun-27', #In a request, asks the KDC to sign the reply with key usage number 27. In a reply, indicates that it was signed with key usage number 27.
@@ -771,7 +771,7 @@ class S4UUserID(core.Sequence):
 		#-- Certificate mapping hints
 		('crealm', Realm, {'tag_type': TAG, 'tag': 2}),
 		('subject-certificate', core.OctetString, {'tag_type': TAG, 'tag': 3, 'optional' : True}),
-		('options', S4UUserID, {'tag_type': TAG, 'tag': 4, 'optional' : True}),
+		('options', S4UUserIDOptions, {'tag_type': TAG, 'tag': 4, 'optional' : True}),
 	]
 	
 #https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/cd9d5ca7-ce20-4693-872b-2f5dd41cbff6

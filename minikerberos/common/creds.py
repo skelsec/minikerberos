@@ -5,28 +5,14 @@
 #
 
 import getpass
-import secrets
 import hashlib
 import collections
-from minikerberos.constants import *
-from minikerberos.encryption import string_to_key, Enctype	
-from minikerberos.ccache import CCACHE
-from minikerberos.keytab import Keytab
 
-
-class KerberosSecretType(enum.Enum):
-	PASSWORD = 'PASSWORD'
-	PW = 'PW'
-	PASS = 'PASS'
-	NT = 'NT'
-	AES = 'AES' #keeping this here for user's secret-type specification and compatibility reasons
-	AES128 = 'AES128'
-	AES256 = 'AES256'
-	RC4 = 'RC4'
-	DES = 'DES'
-	DES3 = 'DES3'
-	TDES = 'TDES'
-	CCACHE = 'CCACHE'
+from minikerberos.common.constants import KerberosSecretType
+from minikerberos.protocol.encryption import string_to_key, Enctype
+from minikerberos.protocol.constants import EncryptionType
+from minikerberos.common.ccache import CCACHE
+from minikerberos.common.keytab import Keytab
 
 
 class KerberosCredential:
@@ -42,33 +28,6 @@ class KerberosCredential:
 		self.kerberos_key_rc4 = None
 		self.kerberos_key_des3 = None
 		self.ccache = None
-
-	help_epilog = """==== Extra Help ====
-kerberos_connection_string secret types: 
-   - Plaintext: "pw" or "pass" or "password"
-   - NT hash: "nt"
-   - RC4 key: "rc4"
-   - AES128/256 key: "aes"
-   - CCACHE file: "ccache"
-   - SSPI: "sspi"
-   
-   Example:
-   - Plaintext:
-      TEST/user/pw:@192.168.1.1 (you will be propted for password)
-      TEST/user/pw:SecretPassword@192.168.1.1
-      TEST/user/password:SecretPassword@192.168.1.1
-      TEST/user/pass:SecretPassword@192.168.1.1
-   - NT hash:
-      TEST/user/nt:921a7fece11f4d8c72432e41e40d0372@192.168.1.1
-   - SSPI:
-      TEST/user/sspi:@192.168.1.1
-   - RC4 key:
-      TEST/user/rc4:921a7fece11f4d8c72432e41e40d0372@192.168.1.1
-   - AES key:
-      TEST/user/aes:921a7fece11f4d8c72432e41e40d0372@192.168.1.1
-   - CCACHE file:
-      TEST/user/ccache:/path/to/file.ccache@192.168.1.1
-"""
 
 	def get_preferred_enctype(self, server_enctypes):
 		client_enctypes = self.get_supported_enctypes(as_int=False)
@@ -164,68 +123,6 @@ kerberos_connection_string secret types:
 		return [etype for etype in supp_enctypes]
 
 	@staticmethod
-	def add_args(parser):
-		group = parser.add_argument_group('authentication')
-
-		group.add_argument('-hashes', action="store", metavar = "LMHASH:NTHASH", help='NTLM hashes, format is LMHASH:NTHASH')
-		group.add_argument('-no-pass', action="store_true", help='don\'t ask for password (useful for -k)')
-		group.add_argument('-k', action="store_true", help='Use Kerberos authentication. Grabs credentials from ccache file '
-														   '(KRB5CCNAME) based on target parameters. If valid credentials cannot be found, it will use'
-														   ' the ones specified in the command line')
-		group.add_argument('-aesKey', action="store", metavar = "hex key", help='AES key to use for Kerberos Authentication'
-																				' (128 or 256 bits)')
-
-
-	@staticmethod
-	def from_args(args):
-		cred = KerberosCredential()
-		cred.from_connection_string(args.target)
-		if args.hashes is not None:
-			cred.lm_hash, cred.nt_hash = args.hashes.split(':')
-
-		if args.aesKey is not None:
-			try:
-				bytes.fromhex(args.aesKey)
-			except Exception as e:
-				raise ValueError('Kerberos AES key format incorrect!') from e
-
-			t = len(args.aesKey)
-			if t == 64:
-				cred.kerberos_key_aes_256 = args.aesKey.lower()
-			elif t == 32:
-				cred.kerberos_key_aes_128 = args.aesKey.lower()
-			else:
-				raise Exception('Kerberos AES key length incorrect!')
-
-		if args.k is True:
-			if cred.has_kerberos_secret() == False:
-				raise Exception('Trying to perform Kerberos authentication with no usable kerberos secrets!')
-			cred.force_kerberos = True
-
-		if args.no_pass == False and cred.has_secret() == False:
-			cred.password = getpass.getpass()
-
-		return cred
-
-	@staticmethod
-	def from_connection_string(s):
-		"""
-		Credential input format:
-		<domain>/<username>/<secret_type>:<secret>@<dc_ip_or_hostname>
-		"""
-		cred = KerberosCredential()
-
-		cred.domain, t = s.split('/', 1)
-		cred.username, t = t.split('/', 1)
-		secret_type, t = t.split(':', 1)
-		secret, target = t.rsplit('@', 1)
-
-		st = KerberosSecretType(secret_type.upper())
-		cred.add_secret(st, secret)
-
-		return cred
-
-	@staticmethod
 	def from_keytab(keytab_file_path: str, principal: str, realm: str):
 		cred = KerberosCredential()
 		cred.username = principal
@@ -306,75 +203,3 @@ kerberos_connection_string secret types:
 			t += 'kerberos_key_des3: %s\r\n' % self.kerberos_key_des3
 		return t
 		
-		
-class KerberosTarget:
-	def __init__(self):
-		self.username = None
-		self.service  = None #the service we are trying to get a ticket for (eg. cifs/mssql...)
-		self.domain   = None #the kerberos realm
-		
-	# https://docs.microsoft.com/en-us/windows/desktop/ad/name-formats-for-unique-spns
-	#def from_spn(self):
-
-	@staticmethod
-	def from_user_email(s):
-		#not actually email, but whatever
-		kt = KerberosTarget()
-		if s.find('@') == -1:
-			raise Exception('Incorrect format, @ sign is missing!')
-		kt.username, kt.domain = s.split('@')
-		return kt
-	
-	@staticmethod
-	def from_target_string(s):
-		"""
-		service/host@domain
-		or
-		host@domain
-		"""
-		kt = KerberosTarget()
-		
-		if s.find('/') != -1:
-			t, kt.domain = s.rsplit('@',1)
-			kt.service, kt.username = t.split('/')
-		else:
-			kt.domain, kt.username = s.split('@')
-		return kt
-
-	def get_principalname(self):
-		if self.service:
-			return [self.service, self.username]
-		return [self.username]
-
-	def get_formatted_pname(self):
-		if self.service:
-			return '%s/%s@%s' % (self.service, self.username, self.domain)
-		return '%s@%s' % (self.username, self.domain)
-	
-	def __str__(self):
-		return self.get_formatted_pname()
-
-def print_table(lines, separate_head=True):
-	"""Prints a formatted table given a 2 dimensional array"""
-	#Count the column width
-	widths = []
-	for line in lines:
-			for i,size in enumerate([len(x) for x in line]):
-					while i >= len(widths):
-							widths.append(0)
-					if size > widths[i]:
-							widths[i] = size
-	   
-	#Generate the format string to pad the columns
-	print_string = ""
-	for i,width in enumerate(widths):
-			print_string += "{" + str(i) + ":" + str(width) + "} | "
-	if (len(print_string) == 0):
-			return
-	print_string = print_string[:-3]
-	   
-	#Print the actual data
-	for i,line in enumerate(lines):
-			print(print_string.format(*line))
-			if (i == 0 and separate_head):
-					print("-"*(sum(widths)+3*(len(widths)-1)))

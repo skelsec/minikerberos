@@ -2,10 +2,10 @@ import enum
 import io
 import os
 
-from minikerberos.constants import EncryptionType
-from minikerberos import encryption
-from minikerberos.crypto.hashing import *
-from minikerberos.crypto.RC4 import *
+from minikerberos.protocol.constants import EncryptionType
+from minikerberos.protocol import encryption
+from minikerberos.crypto.hashing import md5, hmac_md5
+from minikerberos.crypto.RC4 import RC4
 
 #TODO: RC4 support!
 
