@@ -445,7 +445,7 @@ class AIOKerberosClient:
 			raise Exception('S4U2proxy failed! %s' % str(reply))
 			
 		
-	def construct_apreq(self, tgs, encTGSRepPart, sessionkey, flags = None, seq_number = 0, ap_opts = []):
+	def construct_apreq(self, tgs, encTGSRepPart, sessionkey, flags = None, seq_number = 0, ap_opts = [], cb_data = None):
 		now = datetime.datetime.now(datetime.timezone.utc)
 		authenticator_data = {}
 		authenticator_data['authenticator-vno'] = krb5_pvno
@@ -456,7 +456,10 @@ class AIOKerberosClient:
 		if flags is not None:
 			ac = AuthenticatorChecksum()
 			ac.flags = flags
-			ac.channel_binding = b'\x00'*16
+
+			ac.channel_binding = cb_data
+			if cb_data is None:
+				ac.channel_binding = b'\x00'*16
 			
 			chksum = {}
 			chksum['cksumtype'] = 0x8003
@@ -478,7 +481,7 @@ class AIOKerberosClient:
 		return AP_REQ(ap_req).dump()
 		
 	@staticmethod
-	def construct_apreq_from_ticket(ticket_data, sessionkey, crealm, cname, flags = None, seq_number = 0, ap_opts = []):
+	def construct_apreq_from_ticket(ticket_data, sessionkey, crealm, cname, flags = None, seq_number = 0, ap_opts = [], cb_data = None):
 		"""
 		ticket: bytes of Ticket
 		"""
@@ -492,7 +495,9 @@ class AIOKerberosClient:
 		if flags is not None:
 			ac = AuthenticatorChecksum()
 			ac.flags = flags
-			ac.channel_binding = b'\x00'*16
+			ac.channel_binding = cb_data
+			if cb_data is None:
+				ac.channel_binding = b'\x00'*16
 			
 			chksum = {}
 			chksum['cksumtype'] = 0x8003
