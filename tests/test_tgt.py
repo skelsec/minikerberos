@@ -2,7 +2,7 @@ import hashlib
 import unittest
 
 from minikerberos.common import KerberosCredential, KerberosTarget
-from minikerberos.communication import KerberosSocket, KerbrosComm
+from minikerberos.communication import KerberosSocket, KerberosComm
 from minikerberos.encryption import string_to_key, Enctype
 
 
@@ -31,7 +31,7 @@ class TestKerberosTGS(unittest.TestCase):
         cred.username = self.username
         cred.password = self.password
         cred.domain = self.domain
-        kcomm = KerbrosComm(cred, self.kerberos_socet)
+        kcomm = KerberosComm(cred, self.kerberos_socet)
         kcomm.get_TGT()
         kcomm.get_TGS(self.target)
 
@@ -42,7 +42,7 @@ class TestKerberosTGS(unittest.TestCase):
         cred.kerberos_key_aes_128 = string_to_key(
             Enctype.AES128, self.password.encode(), salt).contents.hex()
         cred.domain = self.domain
-        kcomm = KerbrosComm(cred, self.kerberos_socet)
+        kcomm = KerberosComm(cred, self.kerberos_socet)
         kcomm.get_TGT()
         kcomm.get_TGS(self.target)
 
@@ -53,7 +53,7 @@ class TestKerberosTGS(unittest.TestCase):
         cred.kerberos_key_aes_256 = string_to_key(
             Enctype.AES256, self.password.encode(), salt).contents.hex()
         cred.domain = self.domain
-        kcomm = KerbrosComm(cred, self.kerberos_socet)
+        kcomm = KerberosComm(cred, self.kerberos_socet)
         kcomm.get_TGT()
         kcomm.get_TGS(self.target)
 
@@ -64,7 +64,7 @@ class TestKerberosTGS(unittest.TestCase):
         cred.kerberos_key_rc4 = hashlib.new(
             'md4', self.password.encode('utf-16-le')).hexdigest()
         cred.domain = self.domain
-        kcomm = KerbrosComm(cred, self.kerberos_socet)
+        kcomm = KerberosComm(cred, self.kerberos_socet)
         kcomm.get_TGT()
         kcomm.get_TGS(self.target)
 
@@ -75,7 +75,7 @@ class TestKerberosTGS(unittest.TestCase):
         cred.kerberos_key_des = string_to_key(
             Enctype.DES_MD5, self.password.encode(), salt).contents.hex()
         cred.domain = self.domain
-        kcomm = KerbrosComm(cred, self.kerberos_socet)
+        kcomm = KerberosComm(cred, self.kerberos_socet)
         kcomm.get_TGT()
         kcomm.get_TGS(self.target)
 
@@ -86,7 +86,7 @@ class TestKerberosTGS(unittest.TestCase):
         cred.kerberos_key_aes_256 = string_to_key(
             Enctype.AES256, self.password.encode(), salt).contents.hex()
         cred.domain = self.domain
-        kcomm = KerbrosComm(cred, self.kerberos_socet)
+        kcomm = KerberosComm(cred, self.kerberos_socet)
         kcomm.get_TGT()
         kcomm.get_TGS(self.target, override_etype=[2, 3, 16, 23, 17, 18])
 

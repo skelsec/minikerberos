@@ -2,7 +2,7 @@ import hashlib
 import unittest
 
 from minikerberos.common import KerberosCredential
-from minikerberos.communication import KerberosSocket, KerbrosComm
+from minikerberos.communication import KerberosSocket, KerberosComm
 from minikerberos.encryption import string_to_key, Enctype
 
 
@@ -26,7 +26,7 @@ class TestKerberosLogin(unittest.TestCase):
         cred.username = self.username
         cred.password = self.password
         cred.domain = self.domain
-        kcomm = KerbrosComm(cred, self.kerberos_socet)
+        kcomm = KerberosComm(cred, self.kerberos_socet)
         kcomm.get_TGT()
 
     def test_aes128(self):
@@ -36,7 +36,7 @@ class TestKerberosLogin(unittest.TestCase):
         cred.kerberos_key_aes_128 = string_to_key(
             Enctype.AES128, self.password.encode(), salt).contents.hex()
         cred.domain = self.domain
-        kcomm = KerbrosComm(cred, self.kerberos_socet)
+        kcomm = KerberosComm(cred, self.kerberos_socet)
         kcomm.get_TGT()
 
     def test_aes256(self):
@@ -46,7 +46,7 @@ class TestKerberosLogin(unittest.TestCase):
         cred.kerberos_key_aes_256 = string_to_key(
             Enctype.AES256, self.password.encode(), salt).contents.hex()
         cred.domain = self.domain
-        kcomm = KerbrosComm(cred, self.kerberos_socet)
+        kcomm = KerberosComm(cred, self.kerberos_socet)
         kcomm.get_TGT()
 
     def test_rc4(self):
@@ -56,7 +56,7 @@ class TestKerberosLogin(unittest.TestCase):
         cred.kerberos_key_rc4 = hashlib.new(
             'md4', self.password.encode('utf-16-le')).hexdigest()
         cred.domain = self.domain
-        kcomm = KerbrosComm(cred, self.kerberos_socet)
+        kcomm = KerberosComm(cred, self.kerberos_socet)
         kcomm.get_TGT()
 
     def test_des(self):
@@ -66,7 +66,7 @@ class TestKerberosLogin(unittest.TestCase):
         cred.kerberos_key_des = string_to_key(
             Enctype.DES_MD5, self.password.encode(), salt).contents.hex()
         cred.domain = self.domain
-        kcomm = KerbrosComm(cred, self.kerberos_socet)
+        kcomm = KerberosComm(cred, self.kerberos_socet)
         kcomm.get_TGT()    
 
 
