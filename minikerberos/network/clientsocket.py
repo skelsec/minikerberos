@@ -10,7 +10,7 @@ class KerberosClientSocket:
 	def __init__(self, target):
 		self.target = target
 		#ip, port = 88, soc_type = KerberosSocketType.TCP
-		self.soc_type = target.soc_type
+		self.soc_type = target.protocol
 		self.dst_ip = target.ip
 		self.dst_port = int(target.port)
 		self.soc = None
