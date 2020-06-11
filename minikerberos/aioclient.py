@@ -289,7 +289,7 @@ class AIOKerberosClient:
 		"""
 		
 		if not self.kerberos_TGT:
-			logger.debug('S4U2self invoked, but TGT is not available! Fetching TGT...')
+			logger.debug('[S4U2self] TGT is not available! Fetching TGT...')
 			self.get_TGT()
 		
 		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
@@ -324,11 +324,11 @@ class AIOKerberosClient:
 		S4UByteArray += user_to_impersonate.username.encode()
 		S4UByteArray += user_to_impersonate.domain.encode()
 		S4UByteArray += auth_package_name.encode()
-		logger.debug('S4U2self: S4UByteArray: %s' % S4UByteArray.hex())
-		logger.debug('S4U2self: S4UByteArray: %s' % S4UByteArray)
+		logger.debug('[S4U2self] S4UByteArray: %s' % S4UByteArray.hex())
+		logger.debug('[S4U2self] S4UByteArray: %s' % S4UByteArray)
 		
 		chksum_data = _HMACMD5.checksum(self.kerberos_session_key, 17, S4UByteArray)
-		logger.debug('S4U2self: chksum_data: %s' % chksum_data.hex())
+		logger.debug('[S4U2self] chksum_data: %s' % chksum_data.hex())
 		
 		
 		chksum = {}
@@ -366,7 +366,7 @@ class AIOKerberosClient:
 		
 		req = TGS_REQ(krb_tgs_req)
 		
-		logger.debug('Sending S4U2self request to server')
+		logger.debug('[S4U2self] Sending request to server')
 		
 		reply = await self.ksoc.sendrecv(req.dump())
 		if reply.name == 'KRB_ERROR':
@@ -375,20 +375,20 @@ class AIOKerberosClient:
 			
 			raise Exception('S4U2self failed! %s' % str(reply))
 		
-		logger.debug('Got S4U2self reply, decrypting...')
+		logger.debug('[S4U2self] Got reply, decrypting...')
 		tgs = reply.native
 		
 		encTGSRepPart = EncTGSRepPart.load(self.kerberos_cipher.decrypt(self.kerberos_session_key, 8, tgs['enc-part']['cipher'])).native
 		key = Key(encTGSRepPart['key']['keytype'], encTGSRepPart['key']['keyvalue'])
 		
 		self.ccache.add_tgs(tgs, encTGSRepPart)
-		logger.debug('Got valid TGS reply')
+		logger.debug('[S4U2self] Got valid TGS reply')
 		self.kerberos_TGS = tgs
 		return tgs, encTGSRepPart, key
-				
 		
 	# https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/c920c148-8a9c-42e9-b8e9-db5755cd281b
 	async def S4U2proxy(self, s4uself_ticket, spn_user, supp_enc_methods = [EncryptionType.DES_CBC_CRC,EncryptionType.DES_CBC_MD4,EncryptionType.DES_CBC_MD5,EncryptionType.DES3_CBC_SHA1,EncryptionType.ARCFOUR_HMAC_MD5,EncryptionType.AES256_CTS_HMAC_SHA1_96,EncryptionType.AES128_CTS_HMAC_SHA1_96]):
+		logger.debug('[S4U2proxy] Impersonating %s' % '/'.join(spn_user.get_principalname()))
 		now = datetime.datetime.now(datetime.timezone.utc)
 		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
 		
@@ -443,7 +443,17 @@ class AIOKerberosClient:
 				logger.error('S4U2proxy: Failed to get S4U2proxy! Error code (16) indicates that delegation is not enabled for this account!')
 			
 			raise Exception('S4U2proxy failed! %s' % str(reply))
-			
+		
+		logger.debug('[S4U2proxy] Got server reply, decrypting...')
+		tgs = reply.native
+		
+		encTGSRepPart = EncTGSRepPart.load(self.kerberos_cipher.decrypt(self.kerberos_session_key, 8, tgs['enc-part']['cipher'])).native
+		key = Key(encTGSRepPart['key']['keytype'], encTGSRepPart['key']['keyvalue'])
+		
+		self.ccache.add_tgs(tgs, encTGSRepPart)
+		logger.debug('[S4U2proxy] Got valid TGS reply')
+
+		return tgs, encTGSRepPart, key
 		
 	def construct_apreq(self, tgs, encTGSRepPart, sessionkey, flags = None, seq_number = 0, ap_opts = [], cb_data = None):
 		now = datetime.datetime.now(datetime.timezone.utc)
