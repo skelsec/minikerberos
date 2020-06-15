@@ -1,5 +1,5 @@
 
-
+import getpass
 from minikerberos.common.target import KerberosTarget
 from minikerberos.common.creds import KerberosCredential
 from minikerberos.common.proxy import KerberosProxy
@@ -126,10 +126,14 @@ class KerberosClientURL:
 		if schemes[0].endswith('UDP') is True:
 			res.protocol = KerberosSocketType.UDP
 		
+		ttype = schemes[1]
+		if ttype.find('-') != -1 and ttype.upper().endswith('-PROMPT'):
+			ttype = ttype.split('-')[0]
+			res.secret = getpass.getpass()
 		try:
-			res.secret_type = KerberosSecretType(schemes[1])
+			res.secret_type = KerberosSecretType(ttype)
 		except:
-			raise Exception('Unknown secret type! %s' % schemes[0])
+			raise Exception('Unknown secret type! %s' % ttype)
 		
 		if url.username is not None:
 			if url.username.find('\\') != -1:
@@ -138,8 +142,9 @@ class KerberosClientURL:
 				raise Exception('Domain missing from username!')
 		else:
 			raise Exception('Missing username!')
-
-		res.secret = url.password
+		
+		if res.secret is None:
+			res.secret = url.password
 		if url.port is not None:
 			res.port = int(url.port)
 		
