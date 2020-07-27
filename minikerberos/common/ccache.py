@@ -272,17 +272,14 @@ class Times:
 	@staticmethod
 	def from_asn1(enc_as_rep_part):
 		t = Times()
-		if 'authtime' in enc_as_rep_part and enc_as_rep_part['authtime']:
-			t.authtime = dt_to_kerbtime(enc_as_rep_part['authtime'])
-		else:
-			t.authtime = 0
-		if 'starttime' in enc_as_rep_part and enc_as_rep_part['starttime']:
-			t.starttime = dt_to_kerbtime(enc_as_rep_part['starttime'])
-		else:
-			t.starttime = 0
-		t.endtime = dt_to_kerbtime(enc_as_rep_part['endtime'])
-		t.renew_till = dt_to_kerbtime(enc_as_rep_part['renew-till'])
-		
+		t.authtime = dt_to_kerbtime(enc_as_rep_part['authtime']) \
+			if 'authtime' in enc_as_rep_part and enc_as_rep_part['authtime'] else 0
+		t.starttime = dt_to_kerbtime(enc_as_rep_part['starttime']) \
+			if 'starttime' in enc_as_rep_part and enc_as_rep_part['starttime'] else 0
+		t.endtime = dt_to_kerbtime(enc_as_rep_part['endtime']) \
+			if 'endtime' in enc_as_rep_part and enc_as_rep_part['endtime'] else 0
+		t.renew_till = dt_to_kerbtime(enc_as_rep_part['renew_till']) \
+			if 'renew_till' in enc_as_rep_part and enc_as_rep_part['renew_till'] else 0
 		return t
 	
 	@staticmethod
