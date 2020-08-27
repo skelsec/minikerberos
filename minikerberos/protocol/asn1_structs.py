@@ -785,6 +785,22 @@ class AD_IF_RELEVANT(AuthorizationData):
 	pass
 
 
+class GSSAPIOID(core.ObjectIdentifier):
+	_map = {
+		'1.2.840.113554.1.2.2': 'krb5',
+	}
+
+	_reverse_map = {
+		'krb5': '1.2.840.113554.1.2.2',
+	}
+
+
+class GSSAPIToken(core.Asn1Value):
+	class_ = 1
+	tag = 0
+	method = 1
+
+
 #	
 #DOMAIN-X500-COMPRESS	krb5int32 ::= 1
 #

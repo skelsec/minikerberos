@@ -1,5 +1,8 @@
 import io
 import enum
+import base64
+
+from minikerberos.protocol.asn1_structs import GSSAPIOID, GSSAPIToken
 
 #https://tools.ietf.org/html/rfc4121#section-4.1.1.1
 class ChecksumFlags(enum.IntFlag):
@@ -51,3 +54,26 @@ class AuthenticatorChecksum:
 		if self.extensions:
 			t += self.extensions.to_bytes()
 		return t
+
+
+# KRB5Token TOK_ID values.
+class KRB5TokenTokID(enum.IntFlag):
+	KRB_AP_REQ = 0x0100
+	KRB_AP_REP = 0x0200
+	KRB_ERROR = 0x0300
+
+	def get_bytes(self):
+		return self.value.to_bytes(2, byteorder='big')
+
+
+# https://tools.ietf.org/html/rfc4121#section-4.1
+class KRB5Token:
+	def __init__(self, inner_token):
+		self.oid = GSSAPIOID('krb5')
+		self.inner_token = inner_token
+
+	def get_apreq_token(self, encoding='utf-8'):
+		token = self.oid.dump()
+		token += KRB5TokenTokID.KRB_AP_REQ.get_bytes()
+		token += self.inner_token
+		return str(base64.b64encode(GSSAPIToken(contents=token).dump()), encoding)
