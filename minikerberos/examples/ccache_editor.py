@@ -60,7 +60,6 @@ def main():
 		id = args.id
 		temp_cc = CCACHE()
 		temp_cc.file_format_version = cc.file_format_version
-		temp_cc.headerlen = cc.headerlen
 		temp_cc.headers = cc.headers
 		temp_cc.primary_principal = cc.primary_principal
 		i = 0

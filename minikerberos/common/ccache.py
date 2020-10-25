@@ -98,7 +98,7 @@ class Credential:
 		tgs_realm              = res['realm']
 		if tgs_encryption_type == EncryptionType.AES256_CTS_HMAC_SHA1_96.value:
 			tgs_checksum           = res['enc-part']['cipher'][-12:]
-			tgs_encrypted_data2    = res['enc-part']['cipher'][:-12:]
+			tgs_encrypted_data2    = res['enc-part']['cipher'][:-12]
 			return '$krb5tgs$%s$%s$%s$%s$%s' % (tgs_encryption_type,tgs_name_string,tgs_realm, tgs_checksum.hex(), tgs_encrypted_data2.hex() )
 		else:
 			tgs_checksum           = res['enc-part']['cipher'][:16]
@@ -106,6 +106,24 @@ class Credential:
 			return '$krb5tgs$%s$*%s$%s$spn*$%s$%s' % (tgs_encryption_type,tgs_name_string,tgs_realm, tgs_checksum.hex(), tgs_encrypted_data2.hex() )
 
 	def to_tgt(self):
+		"""
+		Returns the native format of an AS_REP message and the sessionkey in EncryptionKey native format
+		"""
+		enc_part = EncryptedData({'etype': 1, 'cipher': b''})
+		
+		tgt_rep = {}
+		tgt_rep['pvno'] = krb5_pvno
+		tgt_rep['msg-type'] = MESSAGE_TYPE.KRB_AS_REP.value
+		tgt_rep['crealm'] = self.server.realm.to_string()
+		tgt_rep['cname'] = self.client.to_asn1()[0]
+		tgt_rep['ticket'] = Ticket.load(self.ticket.to_asn1()).native
+		tgt_rep['enc-part'] = enc_part.native
+
+		t = EncryptionKey(self.key.to_asn1()).native
+		
+		return tgt_rep, t
+
+	def to_tgs(self):
 		"""
 		Returns the native format of an AS_REP message and the sessionkey in EncryptionKey native format
 		"""
@@ -132,8 +150,10 @@ class Credential:
 		krbcredinfo['flags'] = core.IntegerBitString(self.tktflags).cast(TicketFlags)
 		if self.time.authtime != 0: #this parameter is not mandatory, and most of the time not present
 			krbcredinfo['authtime'] = datetime.datetime.fromtimestamp(self.time.authtime)
-		krbcredinfo['starttime'] = datetime.datetime.fromtimestamp(self.time.starttime)
-		krbcredinfo['endtime'] = datetime.datetime.fromtimestamp(self.time.endtime)
+		if self.time.starttime != 0:
+			krbcredinfo['starttime'] = datetime.datetime.fromtimestamp(self.time.starttime)
+		if self.time.endtime != 0:
+			krbcredinfo['endtime'] = datetime.datetime.fromtimestamp(self.time.endtime)
 		if self.time.renew_till != 0: #this parameter is not mandatory, and sometimes it's not present
 			krbcredinfo['renew-till'] = datetime.datetime.fromtimestamp(self.time.authtime)
 		krbcredinfo['srealm'] = self.server.realm.to_string()
@@ -184,7 +204,7 @@ class Credential:
 		for _ in range(c.num_address):
 			c.addrs.append(Address.parse(reader))
 		c.num_authdata = int.from_bytes(reader.read(4), byteorder='big', signed=False)
-		for i in range(c.num_authdata):
+		for _ in range(c.num_authdata):
 			c.authdata.append(Authdata.parse(reader))
 		c.ticket = CCACHEOctetString.parse(reader)
 		c.second_ticket = CCACHEOctetString.parse(reader)
@@ -196,8 +216,8 @@ class Credential:
 		
 	def summary(self):
 		return [ 
-			'%s@%s' % 	(self.client.to_string(),self.client.realm.to_string()), 
-			'%s@%s' % 	(self.server.to_string(), self.server.realm.to_string()),
+			'%s@%s' % 	(self.client.to_string(separator='/'),self.client.realm.to_string()), 
+			'%s@%s' % 	(self.server.to_string(separator='/'), self.server.realm.to_string()),
 			datetime.datetime.fromtimestamp(self.time.starttime).isoformat() if self.time.starttime != 0 else 'N/A',
 			datetime.datetime.fromtimestamp(self.time.endtime).isoformat() if self.time.endtime != 0 else 'N/A',
 			datetime.datetime.fromtimestamp(self.time.renew_till).isoformat() if self.time.renew_till != 0 else 'N/A',
@@ -370,8 +390,8 @@ class CCACHEPrincipal:
 			
 		return p
 		
-	def to_string(self):
-		return '-'.join([c.to_string() for c in self.components])
+	def to_string(self, separator = '-'):
+		return separator.join([c.to_string() for c in self.components])
 		
 	def to_asn1(self):
 		t = {'name-type': self.name_type, 'name-string': [name.to_string() for name in self.components]}
@@ -592,10 +612,18 @@ class CCACHE:
 		"""
 		tgts = []
 		for cred in self.credentials:
-			if cred.server.to_string().lower().find('krbtgt') != -1:
+			if cred.server.to_string(separator = '/').lower().find('krbtgt') != -1:
 				tgts.append(cred.to_tgt())
 
 		return tgts
+
+	def get_all_tgs(self):
+		tgss = []
+		for cred in self.credentials:
+			if cred.server.to_string(separator = '/').lower().find('krbtgt') == -1:
+				tgss.append(cred.to_tgs())
+
+		return tgss
 
 	def get_hashes(self, all_hashes = False):
 		"""
@@ -703,3 +731,6 @@ class CCACHE:
 		with open(filename, 'wb') as f:
 			f.write(self.to_bytes())
 		
+	@staticmethod
+	def from_bytes(data):
+		return CCACHE.parse(io.BytesIO(data))

@@ -15,7 +15,7 @@ from minikerberos.common.ccache import CCACHE
 from minikerberos.network.aioclientsocket import AIOKerberosClientSocket
 from minikerberos.protocol.asn1_structs import METHOD_DATA, ETYPE_INFO, ETYPE_INFO2, \
 	PADATA_TYPE, PA_PAC_REQUEST, PA_ENC_TS_ENC, EncryptedData, krb5_pvno, KDC_REQ_BODY, \
-	AS_REQ, KDCOptions, PrincipalName, EncASRepPart, EncTGSRepPart, PrincipalName, Realm, \
+	AS_REQ, TGS_REP, KDCOptions, PrincipalName, EncASRepPart, EncTGSRepPart, PrincipalName, Realm, \
 	Checksum, APOptions, Authenticator, Ticket, AP_REQ, TGS_REQ, CKSUMTYPE, \
 	PA_FOR_USER_ENC, PA_PAC_OPTIONS, PA_PAC_OPTIONSTypes
 
@@ -26,13 +26,12 @@ from minikerberos.protocol.structures import AuthenticatorChecksum
 from minikerberos.gssapi.gssapi import GSSAPIFlags
 from minikerberos.network.selector import KerberosClientSocketSelector
 
-
 class AIOKerberosClient:
-	def __init__(self, ccred, target, ccache = None):
+	def __init__(self, ccred, target):
 		self.usercreds = ccred
 		self.target = target
 		self.ksoc = KerberosClientSocketSelector.select(self.target, True)
-		self.ccache = CCACHE() if ccache is None else ccache
+		self.ccache = CCACHE() if self.usercreds.ccache is None else self.usercreds.ccache
 		self.kerberos_session_key = None
 		self.kerberos_TGT = None
 		self.kerberos_TGT_encpart = None
@@ -119,8 +118,34 @@ class AIOKerberosClient:
 		logger.debug('Sending TGT request to server')
 		rep = await self.ksoc.sendrecv(req.dump())
 		if rep.name == 'KRB_ERROR':
-			raise Exception('Preauth failed! %s' % str(rep))
+			raise KerberosError(rep, 'Preauth failed!')
 		return rep
+
+	def tgt_from_ccache(self, override_etype = None):
+		try:
+			if self.ccache is None:
+				raise Exception('No CCACHE file found')
+			
+			our_user = str(self.usercreds.username) + '@' + self.usercreds.domain
+			for tgt, keystruct in self.ccache.get_all_tgt():
+				ticket_for = tgt['cname']['name-string'][0] + '@' + tgt['crealm']
+				if ticket_for.upper() == our_user.upper():
+					logger.debug('Found TGT for user %s' % our_user)
+					self.kerberos_TGT = tgt
+					self.kerberos_TGT_encpart = tgt['enc-part']
+					self.kerberos_session_key = Key(keystruct['keytype'], keystruct['keyvalue'])
+					self.kerberos_cipher = _enctype_table[keystruct['keytype']]
+					self.kerberos_cipher_type = keystruct['keytype']
+
+
+					return True, None
+			
+			logger.debug('No TGT found for user %s' % our_user)
+			raise Exception('No TGT found for user %s' % our_user) 
+
+		except Exception as e:
+			return None, e
+
 
 	async def get_TGT(self, override_etype = None, decrypt_tgt = True):
 		"""
@@ -130,6 +155,12 @@ class AIOKerberosClient:
 			2. Depending on the response (either error or AS_REP with TGT) we either send another AS_REQ with the encrypted data or return the TGT (or fail miserably)
 			3. PROFIT
 		"""
+
+		#first, let's check if CCACHE has the correct ticket already
+		_, err = self.tgt_from_ccache(override_etype)
+		if err is None:
+			return
+
 		logger.debug('Generating initial TGT without authentication data')
 		now = datetime.datetime.now(datetime.timezone.utc)
 		kdc_req_body = {}
@@ -202,7 +233,28 @@ class AIOKerberosClient:
 		logger.debug('Got valid TGT')
 		
 		return 
-		
+
+	def tgs_from_ccache(self, spn_user, override_etype):
+		try:
+			if self.ccache is None:
+				raise Exception('No CCACHE file found')
+			
+			for tgs, keystruct in self.ccache.get_all_tgs():
+				ticket_for = ('/'.join(tgs['ticket']['sname']['name-string'])) + '@' + tgs['ticket']['realm']
+				
+				if ticket_for.upper() == str(spn_user).upper():
+					logger.debug('Found TGS for user %s' % ticket_for)
+					key = Key(keystruct['keytype'], keystruct['keyvalue'])
+					tgs = TGS_REP(tgs).native
+					return tgs, tgs['enc-part'], key, None
+
+			logger.debug('No TGS found for user %s' % ticket_for)
+			raise Exception('No TGS found for user %s' % ticket_for) 
+
+			
+		except Exception as e:
+			return None, None, None, e
+
 	async def get_TGS(self, spn_user, override_etype = None, is_linux = False):
 		"""
 		Requests a TGS ticket for the specified user.
@@ -211,7 +263,14 @@ class AIOKerberosClient:
 		spn_user: KerberosTarget: the service user you want to get TGS for.
 		override_etype: None or list of etype values (int) Used mostly for kerberoasting, will override the AP_REQ supported etype values (which is derived from the TGT) to be able to recieve whatever tgs tiecket 
 		"""
-		#construct tgs_req
+		
+		#first, let's check if CCACHE has the correct ticket already
+		tgs, encTGSRepPart, key, err = self.tgs_from_ccache(spn_user, override_etype)
+		if err is None:
+			return tgs, encTGSRepPart, key
+
+		
+		#nope, we need to contact the server
 		logger.debug('Constructing TGS request for user %s' % spn_user.get_formatted_pname())
 		now = datetime.datetime.now(datetime.timezone.utc)
 		kdc_req_body = {}
@@ -240,8 +299,8 @@ class AIOKerberosClient:
 			chksum = {}
 			chksum['cksumtype'] = 0x8003
 			chksum['checksum'] = ac.to_bytes()
-			print(chksum['checksum'])
-			
+
+
 			authenticator_data['cksum'] = Checksum(chksum)
 			authenticator_data['seq-number'] = 0
 		
@@ -269,7 +328,7 @@ class AIOKerberosClient:
 		logger.debug('Constructing TGS request to server')
 		rep = await self.ksoc.sendrecv(req.dump())
 		if rep.name == 'KRB_ERROR':
-			raise Exception('get_TGS failed! %s' % str(rep))
+			raise KerberosError(rep, 'get_TGS failed!')
 		logger.debug('Got TGS reply, decrypting...')
 		tgs = rep.native
 		
@@ -370,10 +429,10 @@ class AIOKerberosClient:
 		
 		reply = await self.ksoc.sendrecv(req.dump())
 		if reply.name == 'KRB_ERROR':
+			emsg = 'S4U2self failed!'
 			if reply.native['error-code'] == 16:
-				logger.error('S4U2self: Failed to get S4U2self! Error code (16) indicates that delegation is not enabled for this account!')
-			
-			raise Exception('S4U2self failed! %s' % str(reply))
+				emsg = 'S4U2self: Failed to get S4U2self! Error code (16) indicates that delegation is not enabled for this account!'			
+			raise KerberosError(reply, emsg)
 		
 		logger.debug('[S4U2self] Got reply, decrypting...')
 		tgs = reply.native
@@ -439,10 +498,11 @@ class AIOKerberosClient:
 		
 		reply = await self.ksoc.sendrecv(req.dump())
 		if reply.name == 'KRB_ERROR':
+			emsg = 'S4U2proxy failed!'
 			if reply.native['error-code'] == 16:
-				logger.error('S4U2proxy: Failed to get S4U2proxy! Error code (16) indicates that delegation is not enabled for this account!')
+				emsg = 'S4U2proxy: Failed to get S4U2proxy! Error code (16) indicates that delegation is not enabled for this account!'
 			
-			raise Exception('S4U2proxy failed! %s' % str(reply))
+			raise KerberosError(reply, emsg)
 		
 		logger.debug('[S4U2proxy] Got server reply, decrypting...')
 		tgs = reply.native

@@ -16,7 +16,7 @@ async def amain(args):
 		raise Exception('SPN must contain @')
 	t, domain = args.spn.split('@')
 	if t.find('/') != -1:
-		service, hostname = args.spn.split('/')
+		service, hostname = t.split('/')
 	else:
 		hostname = t
 		service = None
@@ -59,7 +59,7 @@ def main():
 	import argparse
 	
 	parser = argparse.ArgumentParser(description='Polls the kerberos service for a TGS for the sepcified user and specified service', formatter_class=argparse.RawDescriptionHelpFormatter, epilog = kerberos_url_help_epilog)
-	parser.add_argument('kerberos_connection_string', help='the kerberos target string in the following format <domain>/<username>/<secret_type>:<secret>@<domaincontroller-ip>')
+	parser.add_argument('kerberos_connection_url', help='the kerberos target string in the following format <domain>/<username>/<secret_type>:<secret>@<domaincontroller-ip>')
 	parser.add_argument('spn', help='the service principal in format <service>/<server-hostname>@<domain> Example: cifs/fileserver.test.corp@TEST.corp for a TGS ticket to be used for file access on server "fileserver". IMPORTANT: SERVER\'S HOSTNAME MUST BE USED, NOT IP!!!')
 	parser.add_argument('ccache', help='ccache file to store the TGT ticket in')
 	parser.add_argument('-u', action='store_true', help='Use UDP instead of TCP (not tested)')

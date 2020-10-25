@@ -156,6 +156,12 @@ class KerberosCredential:
 								cred.add_secret(enctype, keytab_entry.key_contents.hex())
 		return cred
 
+	@staticmethod
+	def from_ccache_file(filepath):
+		k = KerberosCredential()
+		k.ccache = CCACHE.from_file(filepath)
+		return k
+
 	def add_secret(self, st: KerberosSecretType, secret: str):
 		if st == KerberosSecretType.PASSWORD or st == KerberosSecretType.PW or st == KerberosSecretType.PASS:
 			if secret == '' or secret is None:

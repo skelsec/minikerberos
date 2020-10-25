@@ -234,7 +234,6 @@ class KerbrosClient:
 			chksum = {}
 			chksum['cksumtype'] = 0x8003
 			chksum['checksum'] = ac.to_bytes()
-			print(chksum['checksum'])
 			
 			authenticator_data['cksum'] = Checksum(chksum)
 			authenticator_data['seq-number'] = 0

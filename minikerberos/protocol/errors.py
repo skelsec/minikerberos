@@ -6,16 +6,24 @@
 import enum
 
 class KerberosError(Exception):
-	def __init__(self, krb_err_msg):
+	def __init__(self, krb_err_msg, extra_msg = ''):
 		self.krb_err_msg = krb_err_msg.native
-		self.errorcode = KerberosErrorCode(self.krb_err_msg['error-code'])
-		self.errormsg = KerberosErrorMessage[self.errorcode.name]
+		self.errorcode = KerberosErrorCode.ERR_NOT_FOUND
+		self.errormsg = 'Error code not found! Err code: %s' % self.krb_err_msg['error-code']
+		try:
+			self.errorcode = KerberosErrorCode(self.krb_err_msg['error-code'])
+			self.errormsg = KerberosErrorMessage[self.errorcode.name]
+		except:
+			pass
+		self.extra_msg = extra_msg
 		
-		super(Exception, self).__init__('%s Error Core: %d' % (self.errormsg.value, self.errorcode.value)) 
+		super(Exception, self).__init__('%s Error Code: %d Reason: %s ' % (extra_msg, self.errorcode.value, self.errormsg.value))
+	
 		
 
 # https://technet.microsoft.com/en-us/library/bb463166.aspx
 class KerberosErrorCode(enum.Enum):
+	ERR_NOT_FOUND = 0xFFFFFF
 	KDC_ERR_NONE = 0x0 #No error
 	KDC_ERR_NAME_EXP = 0x1 #Client's entry in KDC database has expired
 	KDC_ERR_SERVICE_EXP = 0x2 #Server's entry in KDC database has expired
