@@ -149,13 +149,13 @@ class Credential:
 		krbcredinfo['pname'] = self.client.to_asn1()[0]
 		krbcredinfo['flags'] = core.IntegerBitString(self.tktflags).cast(TicketFlags)
 		if self.time.authtime != 0: #this parameter is not mandatory, and most of the time not present
-			krbcredinfo['authtime'] = datetime.datetime.fromtimestamp(self.time.authtime)
+			krbcredinfo['authtime'] = datetime.datetime.fromtimestamp(self.time.authtime, datetime.timezone.utc)
 		if self.time.starttime != 0:
-			krbcredinfo['starttime'] = datetime.datetime.fromtimestamp(self.time.starttime)
+			krbcredinfo['starttime'] = datetime.datetime.fromtimestamp(self.time.starttime, datetime.timezone.utc)
 		if self.time.endtime != 0:
-			krbcredinfo['endtime'] = datetime.datetime.fromtimestamp(self.time.endtime)
+			krbcredinfo['endtime'] = datetime.datetime.fromtimestamp(self.time.endtime, datetime.timezone.utc)
 		if self.time.renew_till != 0: #this parameter is not mandatory, and sometimes it's not present
-			krbcredinfo['renew-till'] = datetime.datetime.fromtimestamp(self.time.authtime)
+			krbcredinfo['renew-till'] = datetime.datetime.fromtimestamp(self.time.authtime, datetime.timezone.utc)
 		krbcredinfo['srealm'] = self.server.realm.to_string()
 		krbcredinfo['sname'] = self.server.to_asn1()[0]
 		

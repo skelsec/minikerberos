@@ -120,7 +120,8 @@ class KerberosClientURL:
 
 		res.dc_ip = url.hostname
 		schemes = url.scheme.upper().split('+')
-		if schemes[0] not in ['KERBEROS', 'KERBEROS-TCP, KERBEROS-UDP']:
+		
+		if schemes[0] not in ['KERBEROS', 'KERBEROS-TCP, KERBEROS-UDP', 'KRB5', 'KRB5-UDP', 'KRB5-TCP']:
 			raise Exception('Unknown protocol! %s' % schemes[0])
 
 		if schemes[0].endswith('UDP') is True:
