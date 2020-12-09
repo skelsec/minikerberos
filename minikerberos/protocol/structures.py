@@ -27,7 +27,7 @@ class AuthenticatorChecksum:
 		
 	@staticmethod
 	def from_bytes(data):
-		AuthenticatorChecksum.from_buffer(io.BytesIO(data))
+		return AuthenticatorChecksum.from_buffer(io.BytesIO(data))
 		
 	@staticmethod
 	def from_buffer(buffer):
@@ -36,9 +36,9 @@ class AuthenticatorChecksum:
 		ac.channel_binding = buffer.read(ac.length_of_binding) #according to the latest RFC this is 16 bytes long always
 		ac.flags = ChecksumFlags(int.from_bytes(buffer.read(4), byteorder = 'little', signed = False))
 		if ac.flags & ChecksumFlags.GSS_C_DELEG_FLAG:
-			ac.delegation = bool(int.from_bytes(buffer.read(1), byteorder = 'little', signed = False))
-			ac.delegation_length = int.from_bytes(2, byteorder = 'little', signed = False)
-			ac.delegation_data = int.from_bytes(ac.delegation_length, byteorder = 'little', signed = False)
+			ac.delegation = bool(int.from_bytes(buffer.read(2), byteorder = 'little', signed = False))
+			ac.delegation_length = int.from_bytes(buffer.read(2), byteorder = 'little', signed = False)
+			ac.delegation_data = buffer.read(ac.delegation_length)
 		ac.extensions = buffer.read()
 		return ac
 		
@@ -48,7 +48,7 @@ class AuthenticatorChecksum:
 		t += self.channel_binding
 		t += self.flags.to_bytes(4, byteorder = 'little', signed = False)
 		if self.flags & ChecksumFlags.GSS_C_DELEG_FLAG:
-			t += int(self.delegation).to_bytes(1, byteorder = 'little', signed = False)
+			t += int(self.delegation).to_bytes(2, byteorder = 'little', signed = False)
 			t += len(self.delegation_data.to_bytes()).to_bytes(2, byteorder = 'little', signed = False)
 			t += self.delegation_data.to_bytes()
 		if self.extensions:
