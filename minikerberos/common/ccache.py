@@ -658,7 +658,10 @@ class CCACHE:
 		eof = reader.tell()
 		reader.seek(pos,0)
 		while reader.tell() < eof:
-			c.credentials.append(Credential.parse(reader))
+			cred = Credential.parse(reader)
+			if not (len(cred.server.components) > 0 and cred.server.components[0].to_string() == 'krb5_ccache_conf_data'
+			and cred.server.realm.to_string() == 'X-CACHECONF:'):
+				c.credentials.append(cred)
 		
 		return c
 		
