@@ -150,10 +150,11 @@ class KerberosClientURL:
 			res.port = int(url.port)
 		
 		query = parse_qs(url.query)
-		proxy_present = False
+		proxy_type = None
 		for k in query:
-			if k.startswith('proxy') is True:
-				proxy_present = True
+			if k == 'proxytype':
+				proxy_type = query[k][0]
+
 			
 			if k in kerberosclienturl_param2var:
 				data = query[k][0]
@@ -166,12 +167,17 @@ class KerberosClientURL:
 							data
 						)
 		
-		if proxy_present is True:
-			cu = SocksClientURL.from_params(url_str)
-			cu.endpoint_ip = res.dc_ip
-			cu.endpoint_port = res.port
+		if proxy_type is not None:
+			if proxy_type.upper() == 'WSNET':
+				res.proxy = KerberosProxy(type=proxy_type.upper())
 
-			res.proxy = KerberosProxy(cu.get_target(), cu.get_creds())
+			else:
+				cu = SocksClientURL.from_params(url_str)
+				cu.endpoint_ip = res.dc_ip
+				cu.endpoint_port = res.port
+
+				res.proxy = KerberosProxy(cu.get_target(), cu.get_creds(), type='SOCKS')
+
 
 		
 		if res.username is None:

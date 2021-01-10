@@ -88,7 +88,7 @@ class APREPRoast:
 			return TGTTicket2hashcat(kcomm.kerberos_TGT)
 		except Exception as e:
 			logger.debug('Error while roasting client %s/%s Reason: %s' % (cred.domain, cred.username, str(e)))
-
+			raise e
 
 class Kerberoast:
 	def __init__(self, target: KerberosTarget, cred: KerberosCredential):
@@ -102,6 +102,7 @@ class Kerberoast:
 		except Exception as e:
 			logger.exception('a')
 			logger.debug('Error logging in! Reason: %s' % (str(e)))
+			raise e
 
 		results = []
 		for spn in spns:

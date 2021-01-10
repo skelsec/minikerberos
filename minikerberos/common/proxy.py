@@ -1,8 +1,9 @@
 
 class KerberosProxy:
-	def __init__(self, target = None,creds = None):
+	def __init__(self, target = None,creds = None, type = None):
 		self.target = target
 		self.creds = creds
+		self.type = type
 
 	def __str__(self):
 		t = '===KerberosTarget===\r\n'

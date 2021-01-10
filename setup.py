@@ -45,7 +45,7 @@ setup(
 	),
 	install_requires=[
 		'asn1crypto>=1.3.0',
-		'asysocks>=0.0.7',
+		'asysocks>=0.0.11',
 	],
 
 	entry_points={
