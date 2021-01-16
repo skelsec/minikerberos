@@ -58,6 +58,7 @@ from minikerberos.crypto.AES import *
 from minikerberos.crypto.DES import DES3, DES_CBC, DES_ECB
 from minikerberos.crypto.RC4 import RC4 as ARC4
 from minikerberos.crypto.DES import DES
+from minikerberos.crypto.hashing import md4
 
 
 def get_random_bytes(lenBytes):
@@ -517,7 +518,9 @@ class _RC4(_EnctypeProfile):
 	@classmethod
 	def string_to_key(cls, string, salt, params):
 		utf16string = string.decode('UTF-8').encode('UTF-16LE')
-		return Key(cls.enctype, hashlib.new('md4', utf16string).digest())
+		#return Key(cls.enctype, hashlib.new('md4', utf16string).digest())
+		data = md4(utf16string).digest() #hashlib.new('md4', utf16string).digest()
+		return Key(cls.enctype, data)
 
 	@classmethod
 	def encrypt(cls, key, keyusage, plaintext, confounder):

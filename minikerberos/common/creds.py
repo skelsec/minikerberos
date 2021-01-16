@@ -13,6 +13,7 @@ from minikerberos.protocol.encryption import string_to_key, Enctype
 from minikerberos.protocol.constants import EncryptionType
 from minikerberos.common.ccache import CCACHE
 from minikerberos.common.keytab import Keytab
+from minikerberos.crypto.hashing import md4
 
 
 class KerberosCredential:
@@ -69,7 +70,8 @@ class KerberosCredential:
 			if self.nt_hash:
 				return bytes.fromhex(self.nt_hash)
 			elif self.password:
-				self.nt_hash = hashlib.new('md4', self.password.encode('utf-16-le')).hexdigest().upper()
+				self.nt_hash = md4(self.password.encode('utf-16-le')).hexdigest().upper()
+				#self.nt_hash = hashlib.new('md4', self.password.encode('utf-16-le')).hexdigest().upper()
 				return bytes.fromhex(self.nt_hash)
 			else:
 				raise Exception('There is no key for RC4 encryption')
