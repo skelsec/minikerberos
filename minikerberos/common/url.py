@@ -168,15 +168,11 @@ class KerberosClientURL:
 						)
 		
 		if proxy_type is not None:
-			if proxy_type.upper() == 'WSNET':
-				res.proxy = KerberosProxy(type=proxy_type.upper())
+			cu = SocksClientURL.from_params(url_str)
+			cu[-1].endpoint_ip = res.dc_ip
+			cu[-1].endpoint_port = res.port
 
-			else:
-				cu = SocksClientURL.from_params(url_str)
-				cu.endpoint_ip = res.dc_ip
-				cu.endpoint_port = res.port
-
-				res.proxy = KerberosProxy(cu.get_target(), cu.get_creds(), type='SOCKS')
+			res.proxy = KerberosProxy(cu, None, type='SOCKS')
 
 
 		

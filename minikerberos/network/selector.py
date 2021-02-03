@@ -12,10 +12,6 @@ class KerberosClientSocketSelector:
             return KerberosClientSocket(target)
         else:
             if target.proxy is not None:
-                if target.proxy.type == 'WSNET':
-                    from minikerberos.network.aioclientwsnetsocket import AIOKerberosClientWSNETSocket
-                    return AIOKerberosClientWSNETSocket(target)
-                else:
-                    return AIOKerberosClientSocksSocket(target)
+                return AIOKerberosClientSocksSocket(target)
             else:
                 return AIOKerberosClientSocket(target)
