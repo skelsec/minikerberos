@@ -646,7 +646,6 @@ class CCACHE:
 		
 		hdr_size = int.from_bytes(reader.read(2), byteorder='big', signed=False)
 		c.headers = Header.parse(reader.read(hdr_size))
-		
 		#c.headerlen = 
 		#for i in range(c.headerlen):
 		#	c.headers.append(Header.parse(reader))

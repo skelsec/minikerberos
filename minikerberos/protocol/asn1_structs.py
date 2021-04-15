@@ -4,7 +4,13 @@
 #  Tamas Jos (@skelsec)
 #
 
+# Sources used:
 # https://zeroshell.org/kerberos/kerberos-operation/
+# https://tools.ietf.org/html/rfc4120
+# https://tools.ietf.org/html/rfc6113 (FAST extension)
+
+# TODO:
+# https://tools.ietf.org/html/rfc4556
 
 from asn1crypto import core
 import enum
@@ -19,16 +25,6 @@ APPLICATION = 1
 CONTEXT = 2
 krb5_pvno = 5 #-- current Kerberos protocol version number
 
-"""
-class NegotiationToken(core.Choice):
-	_alternatives = [
-		#('NegTokenInit2', NegTokenInit2, {'implicit': (0,16) }  ), #NegTokenInit2 the '2' in the name is because Microsoft added modifications to the original rfc :)
-		('NegTokenInit2', NegTokenInit2, {'implicit': (0,16) }  ), #NegTokenInit2 the '2' in the name is because Microsoft added modifications to the original rfc :)
-		('negTokenResp', negTokenResp, {'explicit': (2,1) } ),
-		
-]
-"""
-	
 class PADATA_TYPE(core.Enumerated):
 	_map = {
 		0   : 'NONE', #(0),
@@ -97,7 +93,7 @@ class PADATA_TYPE(core.Enumerated):
 class AUTHDATA_TYPE(core.Enumerated):
 	_map = {
 		1 : 'IF-RELEVANT', #1),
-		2 : 'INTENDED-FOR_SERVER', #2),
+		2 : 'INTENDED-FOR-SERVER', #2),
 		3 : 'INTENDED-FOR-APPLICATION-CLASS', #3),
 		4 : 'KDC-ISSUED', #4),
 		5 : 'AND-OR', #5),
@@ -108,6 +104,9 @@ class AUTHDATA_TYPE(core.Enumerated):
 		64 : 'OSF-DCE', #64),
 		65 : 'SESAME', #65),
 		66 : 'OSF-DCE-PKI-CERTID', #66),
+		70 : 'AD-authentication-strength',
+		71 : 'AD-fx-fast-armor',
+		72 : 'AD-fx-fast-used',
 		128 : 'WIN2K-PAC', #128),
 		129 : 'GSS-API-ETYPE-NEGOTIATION', #129), -- Authenticator only
 		-17 : 'SIGNTICKET-OLDER', #-17),
@@ -506,6 +505,86 @@ class AS_REQ(KDC_REQ):
 class TGS_REQ(KDC_REQ):
 	explicit = (APPLICATION, 12)
 
+class FastOptions(core.BitString):
+	_map = {
+		0:  'reserved',
+		1:  'hide-client-names',
+		2:  'critical_2', #forwarded',
+		3:  'critical_3', #proxiable',
+		4:  'critical_4', #proxy',
+		5:  'critical_5', #may-postdate',
+		6:  'critical_6', #postdated',
+		7:  'critical_7', #invalid',
+		8:  'critical_8', #renewable',
+		9:  'critical_9', #initial',
+		10: 'critical_10', #pre-authent',
+		11: 'critical_11', #hw-authent',
+		12: 'critical_12', #transited-policy-checked',
+		13: 'critical_13', #ok-as-delegate',
+		14: 'critical_14', #anonymous',
+		15: 'critical_15', #enc-pa-rep',
+		16: 'kdc-follow-referrals'
+	}
+	# error: KDC_ERR_UNKNOWN_CRITICAL_FAST_OPTIONS   93
+#5.4.1.  FAST Armors
+
+class EncryptedChallenge(EncryptedData):
+	pass
+
+class AUTHENTICATION_SET_ELEM(core.SequenceOf):
+	_fields = [
+		('pa-type', krb5int32, {'tag_type': TAG, 'tag': 0}),
+		('pa-hint', core.OctetString, {'tag_type': TAG, 'tag': 1 , 'optional': True}),
+		('pa-value', core.OctetString, {'tag_type': TAG, 'tag': 1, 'optional': True}),
+	]
+
+class AUTHENTICATION_SET(core.SequenceOf):
+	_child_spec = AUTHENTICATION_SET_ELEM
+
+class KrbFastArmor(core.Sequence):
+	_fields = [
+		('armor-type', krb5int32, {'tag_type': TAG, 'tag': 0}),
+		('armor-value', core.OctetString, {'tag_type': TAG, 'tag': 1}),
+	]
+
+
+class KrbFastArmoredReq(core.Sequence):
+	_fields = [
+		('armor', KrbFastArmor, {'tag_type': TAG, 'tag': 0, 'optional':True}),
+		('req-checksum', Checksum, {'tag_type': TAG, 'tag': 1}),
+		('enc-fast-req', EncryptedData, {'tag_type': TAG, 'tag': 2}), #KrbFastReq #KEY_USAGE_FAST_REQ_CHKSUM          50 #KEY_USAGE_FAST_ENC                 51
+	]
+
+class KrbFastReq(core.Sequence):
+	_fields = [
+		('fast-options', FastOptions, {'tag_type': TAG, 'tag': 0}),
+		('padata', METHOD_DATA, {'tag_type': TAG, 'tag': 1}),
+		('req-body', KDC_REQ_BODY, {'tag_type': TAG, 'tag': 2}),
+	]
+
+
+class KrbFastFinished(core.Sequence):
+	_fields = [
+		('timestamp', KerberosTime, {'tag_type': TAG, 'tag': 0}), 
+		('usec', Microseconds, {'tag_type': TAG, 'tag': 1}), 
+		('crealm', Realm, {'tag_type': TAG, 'tag': 2}), 
+		('cname', PrincipalName, {'tag_type': TAG, 'tag': 3}), 
+		('ticket-checksum', Checksum, {'tag_type': TAG, 'tag': 4}), #KEY_USAGE_FAST_FINISHED            53
+
+	]
+
+class KrbFastArmoredRep(core.Sequence):
+	_fields = [
+		('enc-fast-rep', EncryptedData, {'tag_type': TAG, 'tag': 0}), #KrbFastResponse KEY_USAGE_FAST_REP                 52
+	]
+
+class KrbFastResponse(core.Sequence):
+	_fields = [
+		('padata', METHOD_DATA, {'tag_type': TAG, 'tag': 0}),
+		('strengthen-key', EncryptionKey, {'tag_type': TAG, 'tag': 1, 'optional':True}),
+		('finished', KrbFastFinished, {'tag_type': TAG, 'tag': 2, 'optional':True}), #KrbFastReq #KEY_USAGE_FAST_REQ_CHKSUM          50 #KEY_USAGE_FAST_ENC                 51
+		('nonce', krb5uint32, {'tag_type': TAG, 'tag': 3}),
+	]
 
 #-- padata-type ::= PA-ENC-TIMESTAMP
 #-- padata-value ::= EncryptedData - PA-ENC-TS-ENC
@@ -517,6 +596,18 @@ class PA_PAC_OPTIONSTypes(core.BitString):
 			2: 'Forward to Full DC',
 			3: 'resource-based constrained delegation',
 		}
+
+class PA_FX_FAST_REQUEST(core.Choice):
+	_alternatives = [
+		('armored-data', KrbFastArmoredReq, {'explicit': (CONTEXT,0) }  ),
+	]
+
+class PA_FX_FAST_REPLY(core.Choice):
+	_alternatives = [
+		('armored-data', KrbFastArmoredRep, {'explicit': (CONTEXT,0) }  ),
+	]
+
+
 
 class PA_PAC_OPTIONS(core.Sequence):
 	_fields = [
@@ -800,160 +891,3 @@ class GSSAPIToken(core.Asn1Value):
 	tag = 0
 	method = 1
 
-
-#	
-#DOMAIN-X500-COMPRESS	krb5int32 ::= 1
-#
-#-- authorization data primitives
-#
-#AD-IF-RELEVANT ::= AuthorizationData
-#
-#AD-KDCIssued ::= SEQUENCE {
-#	ad-checksum[0]		Checksum,
-#	i-realm[1]		Realm OPTIONAL,
-#	i-sname[2]		PrincipalName OPTIONAL,
-#	elements[3]		AuthorizationData
-#}
-#
-#AD-AND-OR ::= SEQUENCE {
-#	condition-count[0]	INTEGER,
-#	elements[1]		AuthorizationData
-#}
-#
-#AD-MANDATORY-FOR-KDC ::= AuthorizationData
-#
-#-- PA-SAM-RESPONSE-2/PA-SAM-RESPONSE-2
-#
-#PA-SAM-TYPE ::= INTEGER {
-#	PA_SAM_TYPE_ENIGMA(1),		-- Enigma Logic
-#	PA_SAM_TYPE_DIGI_PATH(2),	-- Digital Pathways
-#	PA_SAM_TYPE_SKEY_K0(3),		-- S/key where  KDC has key 0
-#	PA_SAM_TYPE_SKEY(4),		-- Traditional S/Key
-#	PA_SAM_TYPE_SECURID(5),		-- Security Dynamics
-#	PA_SAM_TYPE_CRYPTOCARD(6)	-- CRYPTOCard
-#}
-#
-#PA-SAM-REDIRECT ::= HostAddresses
-#
-#SAMFlags ::= BIT STRING {
-#	use-sad-as-key(0),
-#	send-encrypted-sad(1),
-#	must-pk-encrypt-sad(2)
-#}
-#
-#PA-SAM-CHALLENGE-2-BODY ::= SEQUENCE {
-#	sam-type[0]		krb5int32,
-#	sam-flags[1]		SAMFlags,
-#	sam-type-name[2]	GeneralString OPTIONAL,
-#	sam-track-id[3]		GeneralString OPTIONAL,
-#	sam-challenge-label[4]	GeneralString OPTIONAL,
-#	sam-challenge[5]	GeneralString OPTIONAL,
-#	sam-response-prompt[6]	GeneralString OPTIONAL,
-#	sam-pk-for-sad[7]	EncryptionKey OPTIONAL,
-#	sam-nonce[8]		krb5int32,
-#	sam-etype[9]		krb5int32,
-#	...
-#}
-#
-#PA-SAM-CHALLENGE-2 ::= SEQUENCE {
-#	sam-body[0]		PA-SAM-CHALLENGE-2-BODY,
-#	sam-cksum[1]		SEQUENCE OF Checksum, -- (1..MAX)
-#	...
-#}
-#
-#PA-SAM-RESPONSE-2 ::= SEQUENCE {
-#	sam-type[0]		krb5int32,
-#	sam-flags[1]		SAMFlags,
-#	sam-track-id[2]		GeneralString OPTIONAL,
-#	sam-enc-nonce-or-sad[3]	EncryptedData, -- PA-ENC-SAM-RESPONSE-ENC
-#	sam-nonce[4]		krb5int32,
-#	...
-#}
-#
-#PA-ENC-SAM-RESPONSE-ENC ::= SEQUENCE {
-#	sam-nonce[0]		krb5int32,
-#	sam-sad[1]		GeneralString OPTIONAL,
-#	...
-#}
-#
-#PA-S4U2Self ::= SEQUENCE {
-#	name[0]		PrincipalName,
-#        realm[1]	Realm,
-#        cksum[2]	Checksum,
-#        auth[3]		GeneralString
-#}
-#	
-#	
-#	
-#	
-#	
-#
-#
-#
-#
-#
-#
-## https://github.com/tiran/kkdcpasn1/blob/asn1crypto/pykkdcpasn1.py
-#class EncryptedData(core.Sequence):
-#	"""EncryptedData
-#	* KDC-REQ-BODY
-#	* Ticket
-#	* AP-REQ
-#	* KRB-PRIV
-#	EncryptedData ::= SEQUENCE {
-#		etype		[0] Int32,
-#		kvno		 [1] UInt32 OPTIONAL,
-#		cipher	   [2] OCTET STRING
-#	}
-#	"""
-#	_fields = [
-#		('etype', Int32, {'tag_type': TAG, 'tag': 0}),
-#		('kvno', UInt32, {'tag_type': TAG, 'tag': 1, 'optional': True}),
-#		('cipher', core.OctetString, {'tag_type': TAG, 'tag': 2}),
-#]
-#
-#class EncryptionKey(core.Sequence):
-#	"""
-#	EncryptionKey ::= SEQUENCE {
-#	keytype[0]		krb5int32,
-#	keyvalue[1]		OCTET STRING
-#	}
-#	"""
-#	_fields = [
-#		('keytype', Int32, {'tag_type': TAG, 'tag': 0}),
-#		('keyvalue', core.OctetString, {'tag_type': TAG, 'tag': 1}),
-#]
-#
-#	
-#
-#
-#
-#
-
-#
-#
-#class SequenceOfInt32(core.SequenceOf):
-#	"""SEQUENCE OF Int32 for KDC-REQ-BODY
-#	"""
-#	_child_spec = Int32
-#
-#
-#	
-#class SequenceOfKrbCredInfo(core.SequenceOf):
-#	_child_spec = KrbCredInfo
-#	
-#	
-#class EncKrbCredPart(core.Sequence):
-#	explicit = (1, 29)
-#	
-#	_fields = [
-#		('ticket-info', SequenceOfKrbCredInfo, {'tag_type': TAG, 'tag': 0}),
-#		('nonce', Int32, {'tag_type': TAG, 'tag': 1, 'optional': True}),
-#		('timestamp', KerberosTime , {'tag_type': TAG, 'tag': 2, 'optional': True}),
-#		('usec', Microseconds , {'tag_type': TAG, 'tag': 3, 'optional': True}),
-#		('s-address', HostAddress , {'tag_type': TAG, 'tag': 4, 'optional': True}),
-#		('r-address', HostAddress , {'tag_type': TAG, 'tag': 5, 'optional': True}),
-#	]
-#	
-#
-#

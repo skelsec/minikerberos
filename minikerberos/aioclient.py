@@ -589,5 +589,5 @@ class AIOKerberosClient:
 		return AP_REQ(ap_req).dump()
 		
 	async def getST(self, target_user, service_spn):
-		tgs, encTGSRepPart, key = await self.S4U2self(target_user)
-		return self.S4U2proxy(tgs['ticket'], service_spn)
+		tgs, encTGSRepPart, key  = await self.S4U2self(target_user)
+		return await self.S4U2proxy(tgs['ticket'], service_spn)
