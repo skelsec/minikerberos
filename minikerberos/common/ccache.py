@@ -395,7 +395,10 @@ class CCACHEPrincipal:
 		
 	def to_asn1(self):
 		t = {'name-type': self.name_type, 'name-string': [name.to_string() for name in self.components]}
-		return t, self.realm.to_string()		
+		return t, self.realm.to_string()
+
+	def to_spn(self):
+		return '/'.join([name.to_string() for name in self.components]) + '@' + self.realm.to_string()
 	
 	@staticmethod
 	def parse(reader):
@@ -717,6 +720,12 @@ class CCACHE:
 			filepath = os.path.join(kf_abs, filename)
 			with open(filepath, 'wb') as o:
 				o.write(kirbi.dump())
+
+	def list_targets(self):
+		for cred in self.credentials:
+			target = cred.server
+			yield target.to_spn()
+
 	
 	@staticmethod
 	def from_file(filename):

@@ -128,18 +128,26 @@ class AIOKerberosClient:
 			
 			our_user = str(self.usercreds.username) + '@' + self.usercreds.domain
 			for tgt, keystruct in self.ccache.get_all_tgt():
-				ticket_for = tgt['cname']['name-string'][0] + '@' + tgt['crealm']
-				if ticket_for.upper() == our_user.upper():
-					logger.debug('Found TGT for user %s' % our_user)
+				if self.usercreds.ccache_spn_strict_check is True:
+					ticket_for = tgt['cname']['name-string'][0] + '@' + tgt['crealm']
+					if ticket_for.upper() == our_user.upper():
+						logger.debug('Found TGT for user %s' % our_user)
+						self.kerberos_TGT = tgt
+						self.kerberos_TGT_encpart = tgt['enc-part']
+						self.kerberos_session_key = Key(keystruct['keytype'], keystruct['keyvalue'])
+						self.kerberos_cipher = _enctype_table[keystruct['keytype']]
+						self.kerberos_cipher_type = keystruct['keytype']
+										
+						return True, None
+				
+				else:
 					self.kerberos_TGT = tgt
 					self.kerberos_TGT_encpart = tgt['enc-part']
 					self.kerberos_session_key = Key(keystruct['keytype'], keystruct['keyvalue'])
 					self.kerberos_cipher = _enctype_table[keystruct['keytype']]
 					self.kerberos_cipher_type = keystruct['keytype']
-
-
 					return True, None
-			
+
 			logger.debug('No TGT found for user %s' % our_user)
 			raise Exception('No TGT found for user %s' % our_user) 
 
@@ -241,9 +249,14 @@ class AIOKerberosClient:
 			
 			for tgs, keystruct in self.ccache.get_all_tgs():
 				ticket_for = ('/'.join(tgs['ticket']['sname']['name-string'])) + '@' + tgs['ticket']['realm']
-				
-				if ticket_for.upper() == str(spn_user).upper():
-					logger.debug('Found TGS for user %s' % ticket_for)
+				if self.usercreds.ccache_spn_strict_check is True:
+					if ticket_for.upper() == str(spn_user).upper():
+						logger.debug('Found TGS for user %s' % ticket_for)
+						key = Key(keystruct['keytype'], keystruct['keyvalue'])
+						tgs = TGS_REP(tgs).native
+						return tgs, tgs['enc-part'], key, None
+				else:
+					# I hope you know what you are doing at this point...
 					key = Key(keystruct['keytype'], keystruct['keyvalue'])
 					tgs = TGS_REP(tgs).native
 					return tgs, tgs['enc-part'], key, None
@@ -270,6 +283,12 @@ class AIOKerberosClient:
 			return tgs, encTGSRepPart, key
 
 		
+		if self.kerberos_TGT is None:
+			#let's check if CCACHE has a TGT for us
+			_, err = self.tgt_from_ccache(override_etype=override_etype)
+			if err is not None:
+				raise Exception('No TGT found in CCACHE!')
+
 		#nope, we need to contact the server
 		logger.debug('Constructing TGS request for user %s' % spn_user.get_formatted_pname())
 		now = datetime.datetime.now(datetime.timezone.utc)

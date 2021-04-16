@@ -29,6 +29,7 @@ class KerberosCredential:
 		self.kerberos_key_rc4 = None
 		self.kerberos_key_des3 = None
 		self.ccache = None
+		self.ccache_spn_strict_check = True
 
 	def get_preferred_enctype(self, server_enctypes):
 		client_enctypes = self.get_supported_enctypes(as_int=False)
@@ -123,6 +124,17 @@ class KerberosCredential:
 		if as_int == True:
 			return [etype.value for etype in supp_enctypes]
 		return [etype for etype in supp_enctypes]
+	
+	@staticmethod
+	def from_krbcred(keytab_file_path: str):
+		return KerberosCredential.from_kirbi(keytab_file_path)
+
+	@staticmethod
+	def from_kirbi(keytab_file_path: str):
+		cred = KerberosCredential()
+		cred.ccache = CCACHE.from_kirbifile(keytab_file_path)
+		cred.ccache_spn_strict_check = False
+		return cred
 
 	@staticmethod
 	def from_keytab(keytab_file_path: str, principal: str, realm: str):
