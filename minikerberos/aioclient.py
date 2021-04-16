@@ -126,9 +126,9 @@ class AIOKerberosClient:
 			if self.ccache is None:
 				raise Exception('No CCACHE file found')
 			
-			our_user = str(self.usercreds.username) + '@' + self.usercreds.domain
 			for tgt, keystruct in self.ccache.get_all_tgt():
 				if self.usercreds.ccache_spn_strict_check is True:
+					our_user = str(self.usercreds.username) + '@' + self.usercreds.domain
 					ticket_for = tgt['cname']['name-string'][0] + '@' + tgt['crealm']
 					if ticket_for.upper() == our_user.upper():
 						logger.debug('Found TGT for user %s' % our_user)

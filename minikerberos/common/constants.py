@@ -18,3 +18,4 @@ class KerberosSecretType(enum.Enum):
 	TDES = 'TDES'
 	CCACHE = 'CCACHE'
 	KEYTAB = 'KEYTAB'
+	KIRBI = 'KIRBI'

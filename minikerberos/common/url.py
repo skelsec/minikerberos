@@ -70,6 +70,8 @@ class KerberosClientURL:
 	def get_creds(self):
 		if self.secret_type == KerberosSecretType.KEYTAB:
 			return KerberosCredential.from_keytab(self.secret, self.username, self.domain)
+		if self.secret_type == KerberosSecretType.KIRBI:
+			return KerberosCredential.from_kirbi(self.secret)
 
 		res = KerberosCredential()
 		res.username = self.username

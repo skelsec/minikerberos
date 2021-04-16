@@ -31,26 +31,12 @@ async def amain(args):
 	target = cu.get_target()
 	
 	logging.debug('Getting TGT')
-	
-	if not ccred.ccache:
-		client = AIOKerberosClient(ccred, target)
-		logging.debug('Getting TGT')
-		await client.get_TGT()
-		logging.debug('Getting TGS')
-		await client.get_TGS(spn)
-	else:
-		logging.debug('Getting TGS via TGT from CCACHE')
-		for tgt, key in ccred.ccache.get_all_tgt():
-			try:
-				logging.info('Trying to get SPN with %s' % '!'.join(tgt['cname']['name-string']))
-				client = AIOKerberosClient.from_tgt(target, tgt, key)
-				await client.get_TGS(spn)
-				logging.info('Sucsess!')
-			except Exception as e:
-				logging.debug('This ticket is not usable it seems Reason: %s' % e)
-				continue
-			else:
-				break
+
+	client = AIOKerberosClient(ccred, target)
+	logging.debug('Getting TGT')
+	await client.get_TGT()
+	logging.debug('Getting TGS')
+	await client.get_TGS(spn)
 				
 	client.ccache.to_file(args.ccache)
 	logging.info('Done!')

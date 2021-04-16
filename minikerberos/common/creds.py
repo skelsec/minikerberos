@@ -126,12 +126,14 @@ class KerberosCredential:
 		return [etype for etype in supp_enctypes]
 	
 	@staticmethod
-	def from_krbcred(keytab_file_path: str):
-		return KerberosCredential.from_kirbi(keytab_file_path)
+	def from_krbcred(keytab_file_path: str, principal: str = None, realm: str = None):
+		return KerberosCredential.from_kirbi(keytab_file_path, principal, realm)
 
 	@staticmethod
-	def from_kirbi(keytab_file_path: str):
+	def from_kirbi(keytab_file_path: str, principal: str = None, realm: str = None):
 		cred = KerberosCredential()
+		cred.username = principal
+		cred.domain = realm
 		cred.ccache = CCACHE.from_kirbifile(keytab_file_path)
 		cred.ccache_spn_strict_check = False
 		return cred
