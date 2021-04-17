@@ -173,8 +173,10 @@ class KerberosCredential:
 		return cred
 
 	@staticmethod
-	def from_ccache_file(filepath):
+	def from_ccache_file(filepath, principal: str = None, realm: str = None):
 		k = KerberosCredential()
+		k.username = principal
+		k.domain = realm
 		k.ccache = CCACHE.from_file(filepath)
 		return k
 
