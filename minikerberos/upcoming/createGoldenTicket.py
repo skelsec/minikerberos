@@ -40,7 +40,7 @@ if __name__ == '__main__':
 	
 	logging.debug('Getting TGT')
 	
-	kc = KerbrosComm(ccred, ksoc)
+	kc = KerberosComm(ccred, ksoc)
 	kc.get_TGT()
 	#kc.ccache.to_file(args.ccache)	
 	logging.info('Done!')
