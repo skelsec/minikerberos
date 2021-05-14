@@ -99,6 +99,7 @@ class PaDataType(enum.Enum):
 	TD_APP_DEFINED_ERROR = 106#	__ application specific
 	TD_REQ_NONCE = 107#		__ INTEGER
 	TD_REQ_SEQ = 108#		__ INTEGER
+	TD_DH_PARAMETERS = 109 #__ PKINIT
 	PA_PAC_REQUEST = 128#	__ jbrezak@exchange.microsoft.com
 	FOR_USER = 129#		__ MS_KILE
 	FOR_X509_USER = 130#		__ MS_KILE

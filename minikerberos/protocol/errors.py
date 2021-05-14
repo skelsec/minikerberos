@@ -78,10 +78,22 @@ class KerberosErrorCode(enum.Enum):
 	KDC_ERR_CLIENT_NOT_TRUSTED = 0x3E # The client trust failed or is not implemented
 	KDC_ERR_KDC_NOT_TRUSTED = 0x3F # The KDC server trust failed or could not be verified
 	KDC_ERR_INVALID_SIG = 0x40 # The signature is invalid
-	KDC_ERR_KEY_TOO_WEAK = 0x41 #A higher encryption level is needed
+	KDC_ERR_KEY_TOO_WEAK = 0x41 #A higher encryption level is needed, in PKINIT it's KDC_ERR_DH_KEY_PARAMETERS_NOT_ACCEPTED
 	KRB_AP_ERR_USER_TO_USER_REQUIRED = 0x42# User-to-user authorization is required
 	KRB_AP_ERR_NO_TGT  = 0x43 # No TGT was presented or available
 	KDC_ERR_WRONG_REALM = 0x44 #Incorrect domain or principal
+	KDC_ERR_CANT_VERIFY_CERTIFICATE = 0x46
+	KDC_ERR_INVALID_CERTIFICATE = 0x47
+	KDC_ERR_REVOKED_CERTIFICATE = 0x48
+	KDC_ERR_REVOCATION_STATUS_UNKNOWN = 0x49
+	KDC_ERR_CLIENT_NAME_MISMATCH = 0x4B
+	KDC_ERR_INCONSISTENT_KEY_PURPOSE = 0x4D
+	KDC_ERR_DIGEST_IN_CERT_NOT_ACCEPTED = 0x4E
+	KDC_ERR_PA_CHECKSUM_MUST_BE_INCLUDED = 0x4F
+	KDC_ERR_DIGEST_IN_SIGNED_DATA_NOT_ACCEPTED = 0x50
+	KDC_ERR_PUBLIC_KEY_ENCRYPTION_NOT_SUPPORTED = 0x51
+	KRB_AP_ERR_IAKERB_KDC_NOT_FOUND = 0x55 #https://datatracker.ietf.org/doc/html/draft-ietf-kitten-iakerb
+	KRB_AP_ERR_IAKERB_KDC_NO_RESPONSE = 0x56 #https://datatracker.ietf.org/doc/html/draft-ietf-kitten-iakerb
 	
 class KerberosErrorMessage(enum.Enum):
 	KDC_ERR_NONE = 'No error'
@@ -142,3 +154,5 @@ class KerberosErrorMessage(enum.Enum):
 	KRB_AP_ERR_USER_TO_USER_REQUIRED ='User-to-user authorization is required'
 	KRB_AP_ERR_NO_TGT  ='No TGT was presented or available'
 	KDC_ERR_WRONG_REALM = 'Incorrect domain or principal'
+	KRB_AP_ERR_IAKERB_KDC_NOT_FOUND = 'The IAKERB proxy could not find a KDC'
+	KRB_AP_ERR_IAKERB_KDC_NO_RESPONSE = 'The KDC did not respond to the IAKERB proxy'
