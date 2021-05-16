@@ -1,3 +1,13 @@
+
+# Kudos:
+# Parts of this code was inspired by the following project by @rubin_mor
+# https://github.com/morRubin/AzureADJoinedMachinePTC
+# 
+
+# TODO: code currently supports RSA+DH+SHA1 , add support for other mechanisms
+
+
+from minikerberos.common.windows.crypt32 import pkcs7_sign
 import os
 import datetime
 import secrets
@@ -40,7 +50,7 @@ class DirtyDH:
 		self.private_key = os.urandom(32)
 		self.private_key_int = int(self.private_key.hex(), 16)
 		self.dh_nonce = os.urandom(32)
-	
+
 	@staticmethod
 	def from_params(p, g):
 		dd = DirtyDH()
@@ -84,6 +94,21 @@ class PKINIT:
 		self.issuer = None
 		self.cname = None
 		self.diffie = None
+		self.__hcert = None
+
+
+	def init_windows_cert(self, username, certstore_name = 'MY', cert_serial = None):
+		from minikerberos.common.windows.crypt32 import find_cert_by_cn
+		self.certificate, self.__hcert = find_cert_by_cn(username, certstore_name)
+		
+
+	@staticmethod
+	def from_windows_certstore(username, certstore_name = 'MY', cert_serial = None, dh_params = None):
+		pkinit = PKINIT()
+		pkinit.init_windows_cert(username, certstore_name = certstore_name, cert_serial = cert_serial)
+		pkinit.setup(dh_params = dh_params)
+		return pkinit
+
 
 	@staticmethod
 	def from_pfx(pfxfile, pfxpass, dh_params = None):
@@ -95,17 +120,20 @@ class PKINIT:
 			pkinit.privkeyinfo, pkinit.certificate, pkinit.extra_certs = parse_pkcs12(f.read(), password = pfxpass)
 			pkinit.privkey = load_private_key(pkinit.privkeyinfo)
 		#print('pfx12 loaded!')
-
+		pkinit.setup(dh_params = dh_params)
+		return pkinit
+	
+	def setup(self, dh_params = None):
 		# parsing ceritficate to get basic info that will be needed to construct the asreq
 		# this has two components
-		for x in pkinit.certificate.subject.native['common_name']:
+		for x in self.certificate.subject.native['common_name']:
 			if x.startswith("S-1-12"):
-				pkinit.user_sid = x
+				self.user_sid = x
 			elif x.find('@') != -1:
-				pkinit.user_name = x
+				self.user_name = x
 
-		pkinit.issuer = pkinit.certificate.issuer.native['common_name']
-		pkinit.cname = '\\'.join(['AzureAD', pkinit.issuer, pkinit.user_sid])
+		self.issuer = self.certificate.issuer.native['common_name']
+		self.cname = '\\'.join(['AzureAD', self.issuer, self.user_sid])
 
 		#print('cert issuer: %s' % pkinit.issuer)
 		#print('cert user_name: %s' % pkinit.user_name)
@@ -114,17 +142,18 @@ class PKINIT:
 
 		if dh_params is None:
 			print('Generating DH params...')
-			pkinit.diffie = DirtyDH.from_dict( generate_dh_parameters(1024).native)
+			self.diffie = DirtyDH.from_dict( generate_dh_parameters(1024).native)
 			print('DH params generated.')
 		else:
 			#print('Loading default DH params...')
 			if isinstance(dh_params, dict):
-				pkinit.diffie = DirtyDH.from_dict(dh_params)
+				self.diffie = DirtyDH.from_dict(dh_params)
 			elif isinstance(dh_params, bytes):
-				pkinit.diffie = DirtyDH.from_asn1(dh_params)
+				self.diffie = DirtyDH.from_asn1(dh_params)
+			elif isinstance(dh_params, DirtyDH):
+				self.diffie = dh_params
 			else:
 				raise Exception('DH params must be either a bytearray or a dict')
-		return pkinit
 
 
 	def build_asreq(self, target = None, cname = None, kdcopts = ['forwardable','renewable','proxiable', 'canonicalize']):
@@ -285,8 +314,14 @@ class PKINIT:
 
 		return AP_REQ(ap_req).dump()
 
-
 	def sign_authpack(self, data, wrap_signed = False):
+		if self.__hcert is not None:
+			from minikerberos.common.windows.crypt32 import pkcs7_sign
+
+			return pkcs7_sign(self.__hcert, data)
+		return self.sign_authpack_native(self, data, wrap_signed)
+
+	def sign_authpack_native(self, data, wrap_signed = False):
 		"""
 		Creating PKCS7 blob which contains the following things:
 
