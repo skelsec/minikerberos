@@ -319,26 +319,18 @@ def CryptMsgGetParam(hCryptMsg, ptype, dwIndex = 0):
 	dlen = DWORD(0)
 	res = _CryptMsgGetParam(hCryptMsg, ptype, dwIndex, None, byref(dlen))
 	
-	print(dlen)
 	data = ctypes.create_string_buffer(dlen.value)
 	res = _CryptMsgGetParam(hCryptMsg, ptype, dwIndex, byref(data), byref(dlen))
 	if res != True:
 		raise ctypes.WinError(GetLastError())
 
-
-	#print(dlen)
-	#print(data)
-	#return ctypes.string_at(data, dlen.value)
 	return data.raw
 
 
 def get_cert(pccert, native = False):
 	from asn1crypto.x509 import Certificate
 	cctx = pccert.contents
-	#print(cctx)
-	#print(cctx.dwCertEncodingType)
 	cert_data = ctypes.string_at(cctx.pbCertEncoded, cctx.cbCertEncoded)
-	#print(cert_data)
 	if native is False:
 		return Certificate.load(cert_data)
 	return Certificate.load(cert_data).native
