@@ -7,7 +7,6 @@
 # TODO: code currently supports RSA+DH+SHA1 , add support for other mechanisms
 
 
-from minikerberos.common.windows.crypt32 import pkcs7_sign
 import os
 import datetime
 import secrets
