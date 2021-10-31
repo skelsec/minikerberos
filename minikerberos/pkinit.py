@@ -12,8 +12,11 @@ import datetime
 import secrets
 import hashlib
 
-from oscrypto.keys import parse_pkcs12
-from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
+try:
+	from oscrypto.keys import parse_pkcs12
+	from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
+except ImportError:
+	print('oscrypto not installed! are we in the browser?')
 from asn1crypto import cms
 from asn1crypto import algos
 from asn1crypto import core
