@@ -9,15 +9,15 @@ class KerberosError(Exception):
 	def __init__(self, krb_err_msg, extra_msg = ''):
 		self.krb_err_msg = krb_err_msg.native
 		self.errorcode = KerberosErrorCode.ERR_NOT_FOUND
-		self.errormsg = 'Error code not found! Err code: %s' % self.krb_err_msg['error-code']
+		self.errormsg = 'Error message not found! Err code: %s' % self.krb_err_msg['error-code']
 		try:
 			self.errorcode = KerberosErrorCode(self.krb_err_msg['error-code'])
-			self.errormsg = KerberosErrorMessage[self.errorcode.name]
+			self.errormsg = KerberosErrorMessage[self.errorcode.name].value
 		except:
 			pass
 		self.extra_msg = extra_msg
 		
-		super(Exception, self).__init__('%s Error Code: %d Reason: %s ' % (extra_msg, self.errorcode.value, self.errormsg.value))
+		super(Exception, self).__init__('%s Error Name: %s Detail: "%s" ' % (extra_msg, self.errorcode.name, self.errormsg))
 	
 		
 
