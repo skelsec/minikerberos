@@ -714,7 +714,6 @@ def cf2(enctype, key1, key2, pepper1, pepper2):
 	return e.random_to_key(_xorbytes(prfplus(key1, pepper1, e.seedsize),
 									 prfplus(key2, pepper2, e.seedsize)))
 
-
 if __name__ == '__main__':
 	def h(hexstr):
 		return unhexlify(hexstr)

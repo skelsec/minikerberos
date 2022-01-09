@@ -19,3 +19,5 @@ class KerberosSecretType(enum.Enum):
 	CCACHE = 'CCACHE'
 	KEYTAB = 'KEYTAB'
 	KIRBI = 'KIRBI'
+	PFX = 'PFX'
+	PEM = 'PEM'

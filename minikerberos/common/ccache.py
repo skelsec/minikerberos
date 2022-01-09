@@ -9,6 +9,7 @@ import io
 import datetime
 import glob
 import hashlib
+import base64
 
 from minikerberos.protocol.asn1_structs import Ticket, EncryptedData, \
 	krb5_pvno, KrbCredInfo, EncryptionKey, KRBCRED, TicketFlags, EncKrbCredPart
@@ -688,8 +689,15 @@ class CCACHE:
 		kirbidata = None
 		with open(kf_abs, 'rb') as f:
 			kirbidata = f.read()
-			
-		return CCACHE.from_kirbi(kirbidata)
+		try:
+			ccache = CCACHE.from_kirbi(kirbidata)
+		except:
+			#maybe the kirbi file is actually base64 encoded from rubeus?
+			kirbidata = kirbidata.replace(b' ', b'').replace(b'\r', b'').replace(b'\n', b'').replace(b'\t', b'')
+			kirbidata = base64.b64decode(kirbidata)
+			ccache = CCACHE.from_kirbi(kirbidata)
+		
+		return ccache
 	
 	@staticmethod
 	def from_kirbidir(directory_path):

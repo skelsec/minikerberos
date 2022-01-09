@@ -7,6 +7,8 @@
 import getpass
 import hashlib
 import collections
+import base64
+import platform
 
 from minikerberos.common.constants import KerberosSecretType
 from minikerberos.protocol.encryption import string_to_key, Enctype
@@ -14,6 +16,12 @@ from minikerberos.protocol.constants import EncryptionType
 from minikerberos.common.ccache import CCACHE
 from minikerberos.common.keytab import Keytab
 from minikerberos.crypto.hashing import md4
+from asn1crypto import cms
+from asn1crypto import algos
+from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
+from oscrypto.keys import parse_pkcs12, parse_certificate, parse_private
+
+from minikerberos.protocol.dirtydh import DirtyDH
 
 
 class KerberosCredential:
@@ -28,6 +36,10 @@ class KerberosCredential:
 		self.kerberos_key_des = None
 		self.kerberos_key_rc4 = None
 		self.kerberos_key_des3 = None
+		self.certificate = None
+		self.private_key = None
+		self.__hcert = None #handle on the windows certificate store
+		self.dhparams:DirtyDH = None
 		self.ccache = None
 		self.ccache_spn_strict_check = True
 
@@ -120,6 +132,12 @@ class KerberosCredential:
 
 		if self.kerberos_key_des:
 			supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
+		
+		if self.certificate is not None:
+			supp_enctypes = collections.OrderedDict()
+			supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
+			supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
+
 
 		if as_int == True:
 			return [etype.value for etype in supp_enctypes]
@@ -179,6 +197,149 @@ class KerberosCredential:
 		k.domain = realm
 		k.ccache = CCACHE.from_file(filepath)
 		return k
+
+	def set_user_and_domain_from_cert(self, username = None, domain = None):
+		self.username = username
+		if username is None:
+			self.username = self.certificate.subject.native['common_name'][1]
+		self.domain = domain
+		if domain is None:
+			self.domain = '.'.join(self.certificate.subject.native['domain_component'][::-1])
+
+	@staticmethod
+	def from_pem_data(certdata, keydata, dhparams = None, username = None, domain = None):
+		if isinstance(certdata, str):
+			certdata = base64.b64decode(certdata.replace(' ','').replace('\r','').replace('\n','').replace('\t',''))
+		if isinstance(keydata, str):
+			keydata = base64.b64decode(keydata.replace(' ','').replace('\r','').replace('\n','').replace('\t',''))
+		k = KerberosCredential()
+		k.certificate = parse_certificate(certdata)
+		k.private_key = parse_private(keydata)
+		k.set_user_and_domain_from_cert(username = username, domain = username)
+		k.set_dhparams(dhparams)
+
+	@staticmethod
+	def from_pem_file(certpath, keypath, dhparams = None, username = None, domain = None):
+		with open(certpath, 'rb') as f:
+			certdata = f.read()
+
+		with open(keypath, 'rb') as f:
+			keydata = f.read()
+		
+		return KerberosCredential.from_pem_data(certdata, keydata, dhparams = dhparams, username = username, domain = domain)
+
+
+	@staticmethod
+	def from_windows_certstore(commonname, certstore_name = 'MY', dhparams = None, username = None, domain = None):
+		if platform.system().lower() != 'windows':
+			raise Exception('Only works on windows (obviously)')
+		from minikerberos.common.windows.crypt32 import find_cert_by_cn
+
+		k = KerberosCredential()
+		k.certificate, k.__hcert = find_cert_by_cn(commonname, certstore_name)
+		k.set_user_and_domain_from_cert(username = username, domain = username)
+		k.set_dhparams(dhparams)
+		return k
+
+	@staticmethod
+	def from_pfx_string(data, password, dhparams = None, username = None, domain = None):
+		k = KerberosCredential()
+		if password is None:
+			password = b''
+		if isinstance(password, str):
+			password = password.encode()
+		
+		if isinstance(data, str):
+			data = base64.b64decode(data.replace(' ', '').replace('\r','').replace('\n','').encode())
+
+		# private_key is not actually the private key object but the privkey data because oscrypto privkey 
+		# cant be serialized so we cant make copy of it.
+		k.private_key, k.certificate, extra_certs = parse_pkcs12(data, password = password)
+		#k.private_key = load_private_key(privkeyinfo)
+		
+		k.set_user_and_domain_from_cert(username = username, domain = username)
+		k.set_dhparams(dhparams)
+		return k
+
+	@staticmethod
+	def from_pfx_file(filepath, password, dhparams = None, username = None, domain = None):
+		"""
+		Username and domain will override the values found in the certificate
+		"""
+		with open(filepath, 'rb') as f:
+			data = f.read()
+		return KerberosCredential.from_pfx_string(data, password, dhparams = dhparams, username = username, domain = domain)
+	
+	def set_dhparams(self, dhparams):
+		# windows default params, don't look at me...
+		self.dhparams = DirtyDH.from_dict({
+			'p':int('00ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece65381ffffffffffffffff', 16),
+			'g':2
+		})
+		
+		if dhparams is not None:
+			if isinstance(dhparams, dict):
+				self.dhparams = DirtyDH.from_dict(dhparams)
+			elif isinstance(dhparams, bytes):
+				self.dhparams = DirtyDH.from_asn1(dhparams)
+			elif isinstance(dhparams, DirtyDH):
+				self.dhparams= dhparams
+			else:
+				raise Exception('DH params must be either a bytearray or a dict')
+		
+
+	def sign_authpack(self, data, wrap_signed = False):
+		if self.__hcert is not None:
+			from minikerberos.common.windows.crypt32 import pkcs7_sign
+			return pkcs7_sign(self.__hcert, data)
+		return self.sign_authpack_native(data, wrap_signed)
+
+	def sign_authpack_native(self, data, wrap_signed = False):
+		"""
+		Creating PKCS7 blob which contains the following things:
+
+		1. 'data' blob which is an ASN1 encoded "AuthPack" structure
+		2. the certificate used to sign the data blob
+		3. the singed 'signed_attrs' structure (ASN1) which points to the "data" structure (in point 1)
+		"""
+		
+		da = {}
+		da['algorithm'] = algos.DigestAlgorithmId('1.3.14.3.2.26') # for sha1
+
+		si = {}
+		si['version'] = 'v1'
+		si['sid'] = cms.IssuerAndSerialNumber({
+			'issuer':  self.certificate.issuer,
+			'serial_number':  self.certificate.serial_number,
+		})
+
+
+		si['digest_algorithm'] = algos.DigestAlgorithm(da)
+		si['signed_attrs'] = [
+			cms.CMSAttribute({'type': 'content_type', 'values': ['1.3.6.1.5.2.3.1']}), # indicates that the encap_content_info's authdata struct (marked with OID '1.3.6.1.5.2.3.1' is signed )
+			cms.CMSAttribute({'type': 'message_digest', 'values': [hashlib.sha1(data).digest()]}), ### hash of the data, the data itself will not be signed, but this block of data will be.
+		]
+		si['signature_algorithm'] = algos.SignedDigestAlgorithm({'algorithm' : '1.2.840.113549.1.1.1'})
+		si['signature'] = rsa_pkcs1v15_sign(load_private_key(self.private_key),  cms.CMSAttributes(si['signed_attrs']).dump(), "sha1")
+
+		ec = {}
+		ec['content_type'] = '1.3.6.1.5.2.3.1'
+		ec['content'] = data
+
+		sd = {}
+		sd['version'] = 'v3'
+		sd['digest_algorithms'] = [algos.DigestAlgorithm(da)] # must have only one
+		sd['encap_content_info'] = cms.EncapsulatedContentInfo(ec)
+		sd['certificates'] = [self.certificate]
+		sd['signer_infos'] = cms.SignerInfos([cms.SignerInfo(si)])
+		
+		if wrap_signed is True:
+			ci = {}
+			ci['content_type'] = '1.2.840.113549.1.7.2' # signed data OID
+			ci['content'] = cms.SignedData(sd)
+			return cms.ContentInfo(ci).dump()
+
+		return cms.SignedData(sd).dump()
 
 	def add_secret(self, st: KerberosSecretType, secret: str):
 		if st == KerberosSecretType.PASSWORD or st == KerberosSecretType.PW or st == KerberosSecretType.PASS:
