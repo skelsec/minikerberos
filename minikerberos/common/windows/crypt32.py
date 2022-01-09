@@ -372,7 +372,7 @@ def find_cert_by_cn(common_name, certstore_name = 'MY'):
 					return certificate, hcert
 		else:
 			if subject == common_name:
-				return certificate, hcert
+				return certificate, hcert, chandle
 
 	
 

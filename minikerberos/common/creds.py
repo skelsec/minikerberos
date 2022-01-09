@@ -236,13 +236,15 @@ class KerberosCredential:
 	def from_windows_certstore(commonname, certstore_name = 'MY', dhparams = None, username = None, domain = None):
 		if platform.system().lower() != 'windows':
 			raise Exception('Only works on windows (obviously)')
-		from minikerberos.common.windows.crypt32 import find_cert_by_cn, CertCloseStore
+		from minikerberos.common.windows.crypt32 import find_cert_by_cn, CertCloseStore, CertFreeCertificateContext
 
 		k = KerberosCredential()
 		k.commonname = commonname
 		k.certstore_name = certstore_name
-		k.certificate, handle = find_cert_by_cn(commonname, certstore_name)
-		CertCloseStore(handle)
+		k.certificate, chandle, shandle = find_cert_by_cn(commonname, certstore_name)
+		CertFreeCertificateContext(chandle)
+		CertCloseStore(shandle)
+
 		k.__use_windows_certstore = True
 		k.set_user_and_domain_from_cert(username = username, domain = username)
 		k.set_dhparams(dhparams)
@@ -297,10 +299,11 @@ class KerberosCredential:
 
 	def sign_authpack(self, data, wrap_signed = False):
 		if self.__use_windows_certstore is True:
-			from minikerberos.common.windows.crypt32 import pkcs7_sign, CertCloseStore, find_cert_by_cn
-			_, handle = find_cert_by_cn(self.commonname, self.certstore_name)
-			res = pkcs7_sign(handle, data)
-			CertCloseStore(handle)
+			from minikerberos.common.windows.crypt32 import pkcs7_sign, CertCloseStore, find_cert_by_cn, CertFreeCertificateContext
+			_, chandle, shandle  = find_cert_by_cn(self.commonname, self.certstore_name)
+			res = pkcs7_sign(chandle, data)
+			CertFreeCertificateContext(chandle)
+			CertCloseStore(shandle)
 			return res
 		return self.sign_authpack_native(data, wrap_signed)
 
