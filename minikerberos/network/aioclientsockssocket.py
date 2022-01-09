@@ -30,7 +30,10 @@ class AIOKerberosClientSocksSocket:
 		comms = SocksQueueComms(self.out_queue, self.in_queue)
 
 		self.client = SOCKSClient(comms, self.target.proxy.target)
-		self.proxy_task = asyncio.create_task(self.client.run())
+		proxy_coro = await self.client.run(True)
+		self.proxy_task = asyncio.create_task(proxy_coro)
+		await self.client.proxy_running_evt.wait()
+		#self.proxy_task = asyncio.create_task(self.client.run())
 
 		length = len(data).to_bytes(4, byteorder = 'big', signed = False)
 		await self.out_queue.put(length+data)
