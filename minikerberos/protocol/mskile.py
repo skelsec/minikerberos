@@ -1,4 +1,6 @@
 import os
+import io
+
 from asn1crypto import core
 from minikerberos.protocol.asn1_structs import EncryptionKey, Checksum, KerberosTime, Realm
 
