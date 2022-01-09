@@ -369,7 +369,7 @@ def find_cert_by_cn(common_name, certstore_name = 'MY'):
 		if isinstance(subject, list):
 			for se in subject:
 				if se == common_name:
-					return certificate, hcert
+					return certificate, hcert, chandle
 		else:
 			if subject == common_name:
 				return certificate, hcert, chandle
