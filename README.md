@@ -1,6 +1,24 @@
-# minikerberos
+![Supported Python versions](https://img.shields.io/badge/python-3.6+-blue.svg) [![Twitter](https://img.shields.io/twitter/follow/skelsec?label=skelsec&style=social)](https://twitter.com/intent/follow?screen_name=skelsec)
 
+:triangular_flag_on_post: This is the public repository of minikerberos, for latest version and updates please consider supporting us through https://porchetta.industries/
+
+# minikerberos
 Kerberos manipulation library in pure Python.
+
+## In partnership with
+
+<p align="center"><img height=150 width=300 src="https://user-images.githubusercontent.com/5151193/99304058-1cef5700-280f-11eb-8642-1f9553808d2d.png"/></p>
+
+## :triangular_flag_on_post: Sponsors
+
+If you want to sponsors this project and have the latest updates on this project, latest issues fixed, latest features, please support us on https://porchetta.industries/
+
+## Official Discord Channel
+
+Come hang out on Discord!
+
+[![Porchetta Industries](https://discordapp.com/api/guilds/736724457258745996/widget.png?style=banner3)](https://discord.gg/ycGXUxy)
+
 
 # WARNING
 The library underwent some considerable restructuring from 0.1.X to 0.2.X and above.
@@ -15,6 +33,8 @@ Sorry for the inconveinence, however I deemed it important to make these changes
 - `asn1crypto`: the best Python lib to parse/modify/construct ASN1 data. It is
   also written in pure Python, so no need to compile anything, just install
   and use.
+- `oscrypto`: For certificate operations
+- `asysocks`: Provides built-in SOCKS/HTTP/etc proxy capability
 
 ## Usage
 This is a library so the main intention is to use it in your code, however
