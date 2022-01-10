@@ -2,6 +2,7 @@
 #
 # Author:
 #  Tamas Jos (@skelsec)
+#  Dirk-jan Mollema (@_dirkjan) -parts of the PKINIT getTGT-
 #
 
 import collections
