@@ -18,10 +18,15 @@ from minikerberos.common.keytab import Keytab
 from minikerberos.crypto.hashing import md4
 from asn1crypto import cms
 from asn1crypto import algos
-from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
-from oscrypto.keys import parse_pkcs12, parse_certificate, parse_private
-
 from minikerberos.protocol.dirtydh import DirtyDH
+
+if platform.system().lower() != 'emscripten':
+	from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
+	from oscrypto.keys import parse_pkcs12, parse_certificate, parse_private
+else:
+	print('pyodide not supporting openssl...')
+
+
 
 
 class KerberosCredential:

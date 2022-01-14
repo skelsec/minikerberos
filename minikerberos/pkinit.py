@@ -11,17 +11,19 @@ import os
 import datetime
 import secrets
 import hashlib
+import platform
 
-try:
-	from oscrypto.keys import parse_pkcs12
-	from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
-except ImportError:
-	print('oscrypto not installed! are we in the browser?')
 from asn1crypto import cms
 from asn1crypto import algos
 from asn1crypto import core
 from asn1crypto import x509
 from asn1crypto import keys
+
+if platform.system().lower() != 'emscripten':
+	from oscrypto.keys import parse_pkcs12
+	from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
+else:
+	print('pyodide not supporting openssl...')
 
 from minikerberos.protocol.constants import NAME_TYPE, MESSAGE_TYPE, PaDataType
 from minikerberos.protocol.encryption import Enctype, _checksum_table, _enctype_table, Key
