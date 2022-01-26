@@ -20,6 +20,8 @@ from asn1crypto import x509
 from asn1crypto import keys
 
 if platform.system().lower() != 'emscripten':
+	import oscrypto
+	oscrypto.use_pure()
 	from oscrypto.keys import parse_pkcs12
 	from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
 else:
