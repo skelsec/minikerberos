@@ -5,10 +5,6 @@
 # minikerberos
 Kerberos manipulation library in pure Python.
 
-## In partnership with
-
-<p align="center"><img height=150 width=300 src="https://user-images.githubusercontent.com/5151193/99304058-1cef5700-280f-11eb-8642-1f9553808d2d.png"/></p>
-
 ## :triangular_flag_on_post: Sponsors
 
 If you want to sponsors this project and have the latest updates on this project, latest issues fixed, latest features, please support us on https://porchetta.industries/
