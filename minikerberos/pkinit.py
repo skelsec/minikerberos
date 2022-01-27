@@ -19,13 +19,11 @@ from asn1crypto import core
 from asn1crypto import x509
 from asn1crypto import keys
 
-if platform.system().lower() != 'emscripten':
-	import oscrypto
+import oscrypto
+if platform.system().lower() == 'emscripten':
 	oscrypto.use_pure()
-	from oscrypto.keys import parse_pkcs12
-	from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
-else:
-	print('pyodide not supporting openssl...')
+from oscrypto.keys import parse_pkcs12
+from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
 
 from minikerberos.protocol.constants import NAME_TYPE, MESSAGE_TYPE, PaDataType
 from minikerberos.protocol.encryption import Enctype, _checksum_table, _enctype_table, Key

@@ -20,12 +20,12 @@ from asn1crypto import cms
 from asn1crypto import algos
 from minikerberos.protocol.dirtydh import DirtyDH
 
-if platform.system().lower() != 'emscripten':
-	from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
-	from oscrypto.keys import parse_pkcs12, parse_certificate, parse_private
-else:
-	print('pyodide not supporting openssl...')
+import oscrypto
+if platform.system().lower() == 'emscripten':
+	oscrypto.use_pure()
 
+from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
+from oscrypto.keys import parse_pkcs12, parse_certificate, parse_private
 
 
 
