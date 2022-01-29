@@ -202,7 +202,10 @@ class KerbrosClient:
 					logger.debug('Server supports encryption type %s with salt %s' % (EncryptionType(enc_info['etype']).name, enc_info['salt']))
 		
 		preferred_enc_type = self.usercreds.get_preferred_enctype(supp_enc_methods)
-		self.server_salt = supp_enc_methods[preferred_enc_type].encode() #enc_info['salt'].encode() 
+		salt = supp_enc_methods[preferred_enc_type]
+		if salt is not None:
+			salt = salt.encode()
+		self.server_salt = salt #enc_info['salt'].encode()
 		return preferred_enc_type
 
 	def get_TGT(self, override_etype = None, decrypt_tgt = True):
