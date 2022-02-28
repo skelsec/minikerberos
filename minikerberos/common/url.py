@@ -1,5 +1,7 @@
 
 import getpass
+import copy
+
 from minikerberos.common.target import KerberosTarget
 from minikerberos.common.creds import KerberosCredential
 from minikerberos.common.proxy import KerberosProxy
@@ -44,7 +46,7 @@ kerberosclienturl_param2var = {
 }
 
 class KerberosClientURL:
-	def __init__(self):
+	def __init__(self, target = None, credential = None, proxy = None):
 		self.domain = None
 		self.username = None
 		self.secret_type = None
@@ -56,9 +58,15 @@ class KerberosClientURL:
 		self.timeout = 10
 		self.port = 88
 
-		self.proxy = None
+		self.target = target #proxy needs to be already in the target!
+		self.credential = credential
+		self.proxy = proxy
 
 	def get_target(self):
+		if self.target is not None:
+			if self.target.proxy is None and self.proxy is not None:
+				self.target.proxy = self.proxy
+			return copy.deepcopy(self.target)
 		res = KerberosTarget()
 		res.ip = self.dc_ip
 		res.port = self.port
@@ -68,6 +76,9 @@ class KerberosClientURL:
 		return res
 
 	def get_creds(self):
+		if self.credential is not None:
+			return copy.deepcopy(self.credential)
+
 		if self.secret_type == KerberosSecretType.KEYTAB:
 			return KerberosCredential.from_keytab(self.secret, self.username, self.domain)
 		if self.secret_type == KerberosSecretType.KIRBI:
