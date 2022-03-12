@@ -10,9 +10,9 @@
 import os
 import datetime
 import secrets
-import hashlib
 import platform
 
+from unicrypto import hashlib
 from asn1crypto import cms
 from asn1crypto import algos
 from asn1crypto import core
@@ -21,7 +21,10 @@ from asn1crypto import keys
 
 import oscrypto
 if platform.system().lower() == 'emscripten':
-	oscrypto.use_pure()
+	# these imports are pyodide-specific
+	import openssl
+	import ssl
+	oscrypto.use_openssl('/lib/python3.9/site-packages/libcrypto.so', '/lib/python3.9/site-packages/libssl.so')
 from oscrypto.keys import parse_pkcs12
 from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
 

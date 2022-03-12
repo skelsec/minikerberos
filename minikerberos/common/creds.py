@@ -5,24 +5,27 @@
 #
 
 import getpass
-import hashlib
 import collections
 import base64
 import platform
+
+from unicrypto import hashlib
 
 from minikerberos.common.constants import KerberosSecretType
 from minikerberos.protocol.encryption import string_to_key, Enctype
 from minikerberos.protocol.constants import EncryptionType
 from minikerberos.common.ccache import CCACHE
 from minikerberos.common.keytab import Keytab
-from minikerberos.crypto.hashing import md4
 from asn1crypto import cms
 from asn1crypto import algos
 from minikerberos.protocol.dirtydh import DirtyDH
 
 import oscrypto
 if platform.system().lower() == 'emscripten':
-	oscrypto.use_pure()
+	# these imports are pyodide-specific
+	import openssl
+	import ssl
+	oscrypto.use_openssl('/lib/python3.9/site-packages/libcrypto.so', '/lib/python3.9/site-packages/libssl.so')
 
 from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
 from oscrypto.keys import parse_pkcs12, parse_certificate, parse_private
@@ -91,8 +94,7 @@ class KerberosCredential:
 			if self.nt_hash:
 				return bytes.fromhex(self.nt_hash)
 			elif self.password:
-				self.nt_hash = md4(self.password.encode('utf-16-le')).hexdigest().upper()
-				#self.nt_hash = hashlib.new('md4', self.password.encode('utf-16-le')).hexdigest().upper()
+				self.nt_hash = hashlib.md4(self.password.encode('utf-16-le')).hexdigest().upper()
 				return bytes.fromhex(self.nt_hash)
 			else:
 				raise Exception('There is no key for RC4 encryption')

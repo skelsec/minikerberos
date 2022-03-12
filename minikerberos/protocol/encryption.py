@@ -44,21 +44,22 @@
 from struct import pack, unpack
 from binascii import unhexlify
 import string
-import random
 import functools
 import os
 
 from math import gcd
-import hmac as HMAC
-import hashlib
-from hashlib import md5 as MD5
-from hashlib import sha1 as SHA
-from minikerberos.crypto.PBKDF2.pbkdf2 import pbkdf2 as PBKDF2
-from minikerberos.crypto.AES import *
-from minikerberos.crypto.DES import DES3, DES_CBC, DES_ECB
-from minikerberos.crypto.RC4 import RC4 as ARC4
-from minikerberos.crypto.DES import DES
-from minikerberos.crypto.hashing import md4
+from unicrypto import hmac as HMAC
+from unicrypto.hashlib import md5 as MD5
+from unicrypto.hashlib import sha1 as SHA
+from unicrypto.hashlib import md4
+from unicrypto.pbkdf2 import pbkdf2 as PBKDF2
+from unicrypto.symmetric import MODE_CBC, MODE_ECB
+from unicrypto.symmetric import DES 
+from unicrypto.symmetric import TDES as DES3 #, MODE_CBC, MODE_ECB
+from unicrypto.symmetric import RC4 as ARC4
+from unicrypto.symmetric import DES
+from unicrypto.symmetric import AES
+
 
 
 def get_random_bytes(lenBytes):
@@ -352,7 +353,7 @@ class _DESCBC(_SimplifiedEnctype):
 		if _is_weak_des_key(tempkey):
 			tempkey[7] = (tempkey[7] ^ 0xF0).to_bytes(1, byteorder = 'big', signed = False)
 		
-		cipher = DES(tempkey, DES_CBC, tempkey)
+		cipher = DES(tempkey, MODE_CBC, tempkey)
 		chekcsumkey = cipher.encrypt(s)[-8:]
 		chekcsumkey = fixparity(chekcsumkey)
 		if _is_weak_des_key(chekcsumkey):
@@ -363,13 +364,13 @@ class _DESCBC(_SimplifiedEnctype):
 	@classmethod
 	def basic_encrypt(cls, key, plaintext):
 		assert len(plaintext) % 8 == 0
-		des = DES(key.contents, DES_CBC, b'\x00' * 8)
+		des = DES(key.contents, MODE_CBC, b'\x00' * 8)
 		return des.encrypt(plaintext)
 
 	@classmethod
 	def basic_decrypt(cls, key, ciphertext):
 		assert len(ciphertext) % 8 == 0
-		des = DES(key.contents, DES_CBC, b'\x00' * 8)
+		des = DES(key.contents, MODE_CBC, b'\x00' * 8)
 		return des.decrypt(ciphertext)		
 	
 	@classmethod
@@ -423,13 +424,13 @@ class _DES3CBC(_SimplifiedEnctype):
 	@classmethod
 	def basic_encrypt(cls, key, plaintext):
 		assert len(plaintext) % 8 == 0
-		des3 = DES3(key.contents, DES_CBC, IV = b'\x00' * 8)
+		des3 = DES3(key.contents, MODE_CBC, IV = b'\x00' * 8)
 		return des3.encrypt(plaintext)
 
 	@classmethod
 	def basic_decrypt(cls, key, ciphertext):
 		assert len(ciphertext) % 8 == 0
-		des3 = DES3(key.contents, DES_CBC, IV = b'\x00' * 8)
+		des3 = DES3(key.contents, MODE_CBC, IV = b'\x00' * 8)
 		return des3.decrypt(ciphertext)
 
 
@@ -452,7 +453,7 @@ class _AESEnctype(_SimplifiedEnctype):
 	@classmethod
 	def basic_encrypt(cls, key, plaintext):
 		assert len(plaintext) >= 16
-		aes = AESModeOfOperationCBC(key.contents, b'\x00' * 16)
+		aes = AES(key.contents, MODE_CBC, b'\x00' * 16)
 		ctext = aes.encrypt(_zeropad(plaintext, 16))
 		if len(plaintext) > 16:
 			# Swap the last two ciphertext blocks and truncate the
@@ -464,7 +465,7 @@ class _AESEnctype(_SimplifiedEnctype):
 	@classmethod
 	def basic_decrypt(cls, key, ciphertext):
 		assert len(ciphertext) >= 16
-		aes = AESModeOfOperationECB(key.contents)
+		aes = AES(key.contents, MODE_ECB)
 		if len(ciphertext) == 16:
 			return aes.decrypt(ciphertext)
 		# Split the ciphertext into blocks.  The last block may be partial.

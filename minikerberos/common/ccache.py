@@ -8,15 +8,15 @@ import os
 import io
 import datetime
 import glob
-import hashlib
 import base64
 
 from minikerberos.protocol.asn1_structs import Ticket, EncryptedData, \
 	krb5_pvno, KrbCredInfo, EncryptionKey, KRBCRED, TicketFlags, EncKrbCredPart
-from minikerberos.common.utils import dt_to_kerbtime, TGSTicket2hashcat
+from minikerberos.common.utils import dt_to_kerbtime
 from minikerberos.protocol.constants import EncryptionType, MESSAGE_TYPE
 from minikerberos import logger
 from asn1crypto import core
+from unicrypto import hashlib
 
 
 

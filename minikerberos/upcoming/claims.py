@@ -1,5 +1,5 @@
 from pprint import pprint
-from minikerberos.crypto.hashing import md4
+from unicrypto.hashlib import md4
 from minikerberos.protocol.asn1_structs import *
 from minikerberos.protocol.encryption import Key, _enctype_table, _HMACMD5, cf2
 from minikerberos.protocol.constants import EncryptionType

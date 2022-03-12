@@ -1,4 +1,5 @@
-import hashlib
+from unicrypto import hashlib
+
 import unittest
 
 from minikerberos.common import KerberosCredential

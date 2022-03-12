@@ -8,7 +8,7 @@
 import collections
 import datetime
 import secrets
-import hashlib
+from unicrypto import hashlib
 
 from minikerberos import logger
 from minikerberos.common.ccache import CCACHE
@@ -100,7 +100,6 @@ class KerbrosClient:
 	
 	def build_asreq_pkinit(self, supported_encryption_method, kdcopts = ['forwardable','renewable','renewable-ok']):
 		from asn1crypto import keys
-		import hashlib
 
 		if supported_encryption_method.value == 23:
 			raise Exception('RC4 encryption is not supported for certificate auth!')
@@ -580,7 +579,7 @@ class KerbrosClient:
 	#
 	#	return AP_REQ(ap_req).dump()
 
-	def construct_apreq(self, tgs, encTGSRepPart, sessionkey, flags = None, seq_number = 0, ap_opts = []):
+	def construct_apreq(self, tgs, encTGSRepPart, sessionkey, flags = None, seq_number = 0, ap_opts = [], cb_data = None):
 		now = datetime.datetime.now(datetime.timezone.utc)
 		authenticator_data = {}
 		authenticator_data['authenticator-vno'] = krb5_pvno
@@ -591,7 +590,10 @@ class KerbrosClient:
 		if flags is not None:
 			ac = AuthenticatorChecksum()
 			ac.flags = flags
-			ac.channel_binding = b'\x00'*16
+
+			ac.channel_binding = hashlib.md5(cb_data).digest()
+			if cb_data is None:
+				ac.channel_binding = b'\x00'*16
 			
 			chksum = {}
 			chksum['cksumtype'] = 0x8003
@@ -613,7 +615,7 @@ class KerbrosClient:
 		return AP_REQ(ap_req).dump()
 
 	@staticmethod
-	def construct_apreq_from_ticket(ticket_data, sessionkey, crealm, cname, flags = None, seq_number = 0, ap_opts = []):
+	def construct_apreq_from_ticket(ticket_data, sessionkey, crealm, cname, flags = None, seq_number = 0, ap_opts = [], cb_data = None):
 		"""
 		ticket: bytes of Ticket
 		"""
@@ -627,7 +629,9 @@ class KerbrosClient:
 		if flags is not None:
 			ac = AuthenticatorChecksum()
 			ac.flags = flags
-			ac.channel_binding = b'\x00'*16
+			ac.channel_binding = hashlib.md5(cb_data).digest()
+			if cb_data is None:
+				ac.channel_binding = b'\x00'*16
 			
 			chksum = {}
 			chksum['cksumtype'] = 0x8003

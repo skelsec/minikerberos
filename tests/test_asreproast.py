@@ -1,5 +1,4 @@
-import hashlib
-
+from unicrypto import hashlib
 from minikerberos.common import KerberosCredential
 from minikerberos.communication import KerberosSocket
 from minikerberos.security import APREPRoast

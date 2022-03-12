@@ -6,7 +6,7 @@
 #
 
 
-import hashlib
+from unicrypto import hashlib
 import collections
 import datetime
 import secrets
@@ -106,7 +106,6 @@ class AIOKerberosClient:
 	
 	def build_asreq_pkinit(self, supported_encryption_method, kdcopts = ['forwardable','renewable','renewable-ok']):
 		from asn1crypto import keys
-		import hashlib
 
 		if supported_encryption_method.value == 23:
 			raise Exception('RC4 encryption is not supported for certificate auth!')
@@ -662,7 +661,7 @@ class AIOKerberosClient:
 			ac = AuthenticatorChecksum()
 			ac.flags = flags
 
-			ac.channel_binding = cb_data
+			ac.channel_binding = hashlib.md5(cb_data).digest()
 			if cb_data is None:
 				ac.channel_binding = b'\x00'*16
 			
@@ -698,9 +697,10 @@ class AIOKerberosClient:
 		authenticator_data['cusec'] = now.microsecond
 		authenticator_data['ctime'] = now.replace(microsecond=0)
 		if flags is not None:
+			
 			ac = AuthenticatorChecksum()
 			ac.flags = flags
-			ac.channel_binding = cb_data
+			ac.channel_binding = hashlib.md5(cb_data).digest()
 			if cb_data is None:
 				ac.channel_binding = b'\x00'*16
 			
