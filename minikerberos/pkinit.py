@@ -22,7 +22,6 @@ from asn1crypto import keys
 import oscrypto
 if platform.system().lower() == 'emscripten':
 	# these imports are pyodide-specific
-	import openssl
 	import ssl
 	oscrypto.use_openssl('/lib/python3.9/site-packages/libcrypto.so', '/lib/python3.9/site-packages/libssl.so')
 from oscrypto.keys import parse_pkcs12

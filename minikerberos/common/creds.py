@@ -23,7 +23,7 @@ from minikerberos.protocol.dirtydh import DirtyDH
 import oscrypto
 if platform.system().lower() == 'emscripten':
 	# these imports are pyodide-specific
-	import openssl
+	# the special "openssl" module MUST be imported via JS before attempting this!
 	import ssl
 	oscrypto.use_openssl('/lib/python3.9/site-packages/libcrypto.so', '/lib/python3.9/site-packages/libssl.so')
 

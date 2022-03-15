@@ -661,9 +661,9 @@ class AIOKerberosClient:
 			ac = AuthenticatorChecksum()
 			ac.flags = flags
 
-			ac.channel_binding = hashlib.md5(cb_data).digest()
-			if cb_data is None:
-				ac.channel_binding = b'\x00'*16
+			ac.channel_binding = b'\x00'*16
+			if cb_data is not None:
+				ac.channel_binding = hashlib.md5(cb_data).digest()
 			
 			chksum = {}
 			chksum['cksumtype'] = 0x8003
@@ -700,9 +700,9 @@ class AIOKerberosClient:
 			
 			ac = AuthenticatorChecksum()
 			ac.flags = flags
-			ac.channel_binding = hashlib.md5(cb_data).digest()
-			if cb_data is None:
-				ac.channel_binding = b'\x00'*16
+			ac.channel_binding = b'\x00'*16
+			if cb_data is not None:
+				ac.channel_binding = hashlib.md5(cb_data).digest()
 			
 			chksum = {}
 			chksum['cksumtype'] = 0x8003
