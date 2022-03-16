@@ -273,7 +273,7 @@ class KerberosCredential:
 		k.private_key, k.certificate, extra_certs = parse_pkcs12(data, password = password)
 		#k.private_key = load_private_key(privkeyinfo)
 		
-		k.set_user_and_domain_from_cert(username = username, domain = username)
+		k.set_user_and_domain_from_cert(username = username, domain = domain)
 		k.set_dhparams(dhparams)
 		return k
 
