@@ -211,10 +211,18 @@ class KerberosCredential:
 	def set_user_and_domain_from_cert(self, username = None, domain = None):
 		self.username = username
 		if username is None:
-			self.username = self.certificate.subject.native['common_name'][1]
+			self.username = self.certificate.subject.native['common_name'].rsplit('@', 1)[0]
 		self.domain = domain
 		if domain is None:
-			self.domain = '.'.join(self.certificate.subject.native['domain_component'][::-1])
+			dc = None
+			if 'domain_component' in self.certificate.issuer.native:
+				dc = self.certificate.issuer.native['domain_component']
+			if 'domain_component' in self.certificate.subject.native:
+				dc = self.certificate.subject.native['domain_component']
+			if dc is not None:
+				self.domain = '.'.join(dc[::-1])
+			else:
+				raise Exception('Could\'t find proper domain name in the certificate! Please set it manually!')
 
 	@staticmethod
 	def from_pem_data(certdata, keydata, dhparams = None, username = None, domain = None):
@@ -225,7 +233,7 @@ class KerberosCredential:
 		k = KerberosCredential()
 		k.certificate = parse_certificate(certdata)
 		k.private_key = parse_private(keydata)
-		k.set_user_and_domain_from_cert(username = username, domain = username)
+		k.set_user_and_domain_from_cert(username = username, domain = domain)
 		k.set_dhparams(dhparams)
 
 	@staticmethod
@@ -253,7 +261,7 @@ class KerberosCredential:
 		CertCloseStore(shandle)
 
 		k.__use_windows_certstore = True
-		k.set_user_and_domain_from_cert(username = username, domain = username)
+		k.set_user_and_domain_from_cert(username = username, domain = domain)
 		k.set_dhparams(dhparams)
 		return k
 
