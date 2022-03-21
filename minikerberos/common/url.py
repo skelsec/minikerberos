@@ -175,10 +175,10 @@ class KerberosClientURL:
 					data = c(data)
 
 					setattr(
-							res, 
-							kerberosclienturl_param2var[k][0], 
-							data
-						)
+						res, 
+						kerberosclienturl_param2var[k][0], 
+						data
+					)
 		
 		if proxy_type is not None:
 			cu = SocksClientURL.from_params(url_str)

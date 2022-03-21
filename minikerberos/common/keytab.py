@@ -9,14 +9,15 @@
 # Be careful using this parser/writer! The specifications in the MIT Kerberos's official page doesnt match with the file Windows server generates!!
 # Thus this script is to support Windows generated keytabs, not sure about MIT's
 import io
-
+from typing import List
+from __future__ import annotations
 
 class KeytabPrincipal:
     def __init__(self):
-        self.num_components = None
-        self.name_type = None
-        self.realm = None
-        self.components = []
+        self.num_components:int = None
+        self.name_type:int = None
+        self.realm:KeytabOctetString = None
+        self.components:List[KeytabOctetString] = []
 
     @staticmethod
     def from_asn1(principal, realm):
@@ -72,31 +73,31 @@ class KeytabOctetString:
     """
 
     def __init__(self):
-        self.length = None
-        self.data = None
+        self.length:int = None
+        self.data:bytes = None
 
     @staticmethod
-    def empty():
+    def empty() -> KeytabOctetString:
         o = KeytabOctetString()
         o.length = 0
         o.data = b''
         return o
 
-    def to_asn1(self):
+    def to_asn1(self) -> bytes:
         return self.data
 
-    def to_string(self):
+    def to_string(self) -> str:
         return self.data.decode()
     
     @staticmethod
-    def from_string(data):
+    def from_string(data) -> KeytabOctetString:
         o = KeytabOctetString()
         o.data = data.encode()
         o.length = len(o.data)
         return o
 
     @staticmethod
-    def from_asn1(data):
+    def from_asn1(data) -> KeytabOctetString:
         o = KeytabOctetString()
         o.length = len(data)
         if isinstance(data, str):
@@ -106,13 +107,13 @@ class KeytabOctetString:
         return o
 
     @staticmethod
-    def parse(reader):
+    def parse(reader: io.BytesIO) -> KeytabOctetString:
         o = KeytabOctetString()
         o.length = int.from_bytes(reader.read(2), byteorder='big', signed=False)
         o.data = reader.read(o.length)
         return o
 
-    def to_bytes(self):
+    def to_bytes(self) -> bytes:
         if isinstance(self.data, str):
             self.data = self.data.encode()
             self.length = len(self.data)
@@ -123,14 +124,14 @@ class KeytabOctetString:
 
 class KeytabEntry:
     def __init__(self):
-        self.principal = None
-        self.timestamp = None
-        self.key_version = None
-        self.enctype = None
-        self.key_length = None
-        self.key_contents = None
+        self.principal:KeytabPrincipal = None
+        self.timestamp:int = None
+        self.key_version:int = None
+        self.enctype:int = None
+        self.key_length:int = None
+        self.key_contents:bytes = None
 
-    def to_bytes(self):
+    def to_bytes(self) -> bytes:
         t = self.principal.to_bytes()
         t += self.timestamp.to_bytes(4, 'big', signed=False)
         t += self.key_version.to_bytes(1, 'big', signed=False)
@@ -140,11 +141,11 @@ class KeytabEntry:
         return t
 
     @staticmethod
-    def from_bytes(data):
+    def from_bytes(data) -> KeytabEntry:
         return KeytabEntry.from_buffer(io.BytesIO(data))
 
     @staticmethod
-    def from_buffer(buffer):
+    def from_buffer(buffer:io.BytesIO) -> KeytabEntry:
         ke = KeytabEntry()
         ke.principal = KeytabPrincipal.from_buffer(buffer)
         ke.timestamp = int.from_bytes(buffer.read(4), byteorder='big', signed=False)
@@ -168,11 +169,11 @@ class KeytabEntry:
 
 class Keytab:
     def __init__(self):
-        self.krb5 = 5
-        self.version = 2
-        self.entries = []
+        self.krb5:int = 5
+        self.version:int = 2
+        self.entries:List[KeytabEntry] = []
 
-    def to_bytes(self):
+    def to_bytes(self) -> bytes:
         t = self.krb5.to_bytes(1, 'big', signed=False)
         t += self.version.to_bytes(1, 'big', signed=False)
         for e in self.entries:
@@ -187,7 +188,7 @@ class Keytab:
         return Keytab.from_buffer(io.BytesIO(data))
 
     @staticmethod
-    def from_buffer(buffer):
+    def from_buffer(buffer:io.BytesIO) -> Keytab:
         pos = buffer.tell()
         buffer.seek(0, 2)
         buffer_size = buffer.tell() - pos

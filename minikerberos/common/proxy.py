@@ -1,6 +1,7 @@
 
+
 class KerberosProxy:
-	def __init__(self, target = None,creds = None, type = None):
+	def __init__(self, target = None, creds = None, type:str = 'SOCKS'):
 		self.target = target
 		self.creds = creds
 		self.type = type

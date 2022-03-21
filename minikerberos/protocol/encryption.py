@@ -46,6 +46,7 @@ from binascii import unhexlify
 import string
 import functools
 import os
+from typing import Dict
 
 from math import gcd
 from unicrypto import hmac as HMAC
@@ -618,7 +619,7 @@ class _HMACMD5(_ChecksumProfile):
 		super(_HMACMD5, cls).verify(key, keyusage, text, cksum)
 
 
-_enctype_table = {
+_enctype_table:Dict[str, _SimplifiedEnctype] = {
 	Enctype.DES_MD5: _DESCBC,
 	Enctype.DES3: _DES3CBC,
 	Enctype.AES128: _AES128CTS,
@@ -649,7 +650,7 @@ def _get_checksum_profile(cksumtype):
 
 
 class Key(object):
-	def __init__(self, enctype, contents):
+	def __init__(self, enctype:Enctype, contents:bytes):
 		e = _get_enctype_profile(enctype)
 		if len(contents) != e.keysize:
 			raise ValueError('Wrong key length')

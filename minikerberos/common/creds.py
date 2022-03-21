@@ -8,6 +8,8 @@ import getpass
 import collections
 import base64
 import platform
+from typing import List
+from __future__ import annotations
 
 from unicrypto import hashlib
 
@@ -34,27 +36,27 @@ from oscrypto.keys import parse_pkcs12, parse_certificate, parse_private
 
 class KerberosCredential:
 	def __init__(self):
-		self.username = None
-		self.domain = None
-		self.password = None
-		self.nt_hash = None
-		self.lm_hash = None
-		self.kerberos_key_aes_256 = None
-		self.kerberos_key_aes_128 = None
-		self.kerberos_key_des = None
-		self.kerberos_key_rc4 = None
-		self.kerberos_key_des3 = None
+		self.username:str = None
+		self.domain:str = None
+		self.password:str = None
+		self.nt_hash:str = None
+		self.lm_hash:str = None
+		self.kerberos_key_aes_256:str = None
+		self.kerberos_key_aes_128:str = None
+		self.kerberos_key_des:str = None
+		self.kerberos_key_rc4:str = None
+		self.kerberos_key_des3:str = None
 		self.certificate = None
 		self.private_key = None
 		self.__hcert = None #handle on the windows certificate store
-		self.__use_windows_certstore = False
-		self.commonname = None
-		self.certstore_name = None
+		self.__use_windows_certstore:bool = False
+		self.commonname:str = None
+		self.certstore_name:str = None
 		self.dhparams:DirtyDH = None
-		self.ccache = None
-		self.ccache_spn_strict_check = True
+		self.ccache:CCACHE = None
+		self.ccache_spn_strict_check:bool = True
 
-	def get_preferred_enctype(self, server_enctypes):
+	def get_preferred_enctype(self, server_enctypes:List[EncryptionType]) -> EncryptionType:
 		client_enctypes = self.get_supported_enctypes(as_int=False)
 		common_enctypes = list(set([s_enctype for s_enctype in server_enctypes]) & set(client_enctypes))
 
@@ -68,7 +70,7 @@ class KerberosCredential:
 		)
 						)
 
-	def get_key_for_enctype(self, etype, salt = None):
+	def get_key_for_enctype(self, etype:EncryptionType, salt:bytes = None) -> bytes:
 		"""
 		Returns the encryption key bytes for the enctryption type.
 		"""
@@ -121,7 +123,7 @@ class KerberosCredential:
 		else:
 			raise Exception('Unsupported encryption type: %s' % etype.name)
 
-	def get_supported_enctypes(self, as_int = True):
+	def get_supported_enctypes(self, as_int = True) -> List[EncryptionType]:
 		supp_enctypes = collections.OrderedDict()
 		if self.kerberos_key_aes_256:
 			supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
@@ -154,11 +156,11 @@ class KerberosCredential:
 		return [etype for etype in supp_enctypes]
 	
 	@staticmethod
-	def from_krbcred(keytab_file_path: str, principal: str = None, realm: str = None):
+	def from_krbcred(keytab_file_path: str, principal: str = None, realm: str = None) -> KerberosCredential:
 		return KerberosCredential.from_kirbi(keytab_file_path, principal, realm)
 
 	@staticmethod
-	def from_kirbi(keytab_file_path: str, principal: str = None, realm: str = None):
+	def from_kirbi(keytab_file_path: str, principal: str = None, realm: str = None) -> KerberosCredential:
 		cred = KerberosCredential()
 		cred.username = principal
 		cred.domain = realm
@@ -167,7 +169,7 @@ class KerberosCredential:
 		return cred
 
 	@staticmethod
-	def from_keytab(keytab_file_path: str, principal: str, realm: str):
+	def from_keytab(keytab_file_path: str, principal: str, realm: str) -> KerberosCredential:
 		cred = KerberosCredential()
 		cred.username = principal
 		cred.domain = realm
@@ -201,14 +203,18 @@ class KerberosCredential:
 		return cred
 
 	@staticmethod
-	def from_ccache_file(filepath, principal: str = None, realm: str = None):
+	def from_ccache_file(filepath, principal: str = None, realm: str = None) -> KerberosCredential:
 		k = KerberosCredential()
 		k.username = principal
 		k.domain = realm
 		k.ccache = CCACHE.from_file(filepath)
 		return k
 
-	def set_user_and_domain_from_cert(self, username = None, domain = None):
+	def set_user_and_domain_from_cert(self, username:str = None, domain:str = None):
+		"""
+		Tries to guess the correct username and domain from the current certificate,
+		if 'username' and/or 'domain' is set it will set those
+		"""
 		self.username = username
 		if username is None:
 			self.username = self.certificate.subject.native['common_name'].rsplit('@', 1)[0]
@@ -225,7 +231,7 @@ class KerberosCredential:
 				raise Exception('Could\'t find proper domain name in the certificate! Please set it manually!')
 
 	@staticmethod
-	def from_pem_data(certdata, keydata, dhparams = None, username = None, domain = None):
+	def from_pem_data(certdata: str|bytes, keydata:str|bytes, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
 		if isinstance(certdata, str):
 			certdata = base64.b64decode(certdata.replace(' ','').replace('\r','').replace('\n','').replace('\t',''))
 		if isinstance(keydata, str):
@@ -235,9 +241,10 @@ class KerberosCredential:
 		k.private_key = parse_private(keydata)
 		k.set_user_and_domain_from_cert(username = username, domain = domain)
 		k.set_dhparams(dhparams)
+		return k
 
 	@staticmethod
-	def from_pem_file(certpath, keypath, dhparams = None, username = None, domain = None):
+	def from_pem_file(certpath:str, keypath: str, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
 		with open(certpath, 'rb') as f:
 			certdata = f.read()
 
@@ -248,7 +255,7 @@ class KerberosCredential:
 
 
 	@staticmethod
-	def from_windows_certstore(commonname, certstore_name = 'MY', dhparams = None, username = None, domain = None):
+	def from_windows_certstore(commonname:str, certstore_name:str = 'MY', dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
 		if platform.system().lower() != 'windows':
 			raise Exception('Only works on windows (obviously)')
 		from minikerberos.common.windows.crypt32 import find_cert_by_cn, CertCloseStore, CertFreeCertificateContext
@@ -266,7 +273,7 @@ class KerberosCredential:
 		return k
 
 	@staticmethod
-	def from_pfx_string(data, password, dhparams = None, username = None, domain = None):
+	def from_pfx_string(data: str|bytes, password:str, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
 		k = KerberosCredential()
 		if password is None:
 			password = b''
@@ -286,7 +293,7 @@ class KerberosCredential:
 		return k
 
 	@staticmethod
-	def from_pfx_file(filepath, password, dhparams = None, username = None, domain = None):
+	def from_pfx_file(filepath:str, password:str, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
 		"""
 		Username and domain will override the values found in the certificate
 		"""

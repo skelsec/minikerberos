@@ -10,10 +10,11 @@ from unicrypto import hashlib
 import collections
 import datetime
 import secrets
+from __future__ import annotations
+from typing import List
 
 from minikerberos import logger
 from minikerberos.common.ccache import CCACHE
-from minikerberos.network.aioclientsocket import AIOKerberosClientSocket
 from minikerberos.protocol.asn1_structs import METHOD_DATA, ETYPE_INFO, ETYPE_INFO2, \
 	PADATA_TYPE, PA_PAC_REQUEST, PA_ENC_TS_ENC, EncryptedData, krb5_pvno, KDC_REQ_BODY, \
 	AS_REQ, TGS_REP, KDCOptions, PrincipalName, EncASRepPart, EncTGSRepPart, PrincipalName, Realm, \
@@ -50,7 +51,7 @@ class AIOKerberosClient:
 		self.server_salt = None
 
 	@staticmethod
-	def from_tgt(target, tgt, key):
+	def from_tgt(target, tgt, key) -> AIOKerberosClient:
 		"""
 		Sets up the kerberos object from tgt and the session key.
 		Use this function when pulling the TGT from ccache file.
@@ -63,7 +64,7 @@ class AIOKerberosClient:
 		kc.kerberos_cipher = _enctype_table[kc.kerberos_cipher_type]
 		return kc
 
-	def build_asreq_lts(self, supported_encryption_method, kdcopts = ['forwardable','renewable','proxiable']):
+	def build_asreq_lts(self, supported_encryption_method, kdcopts:List[str] = ['forwardable','renewable','proxiable']) -> AS_REQ:
 		logger.debug('Constructing TGT request with auth data')
 		#now to create an AS_REQ with encrypted timestamp for authentication
 		pa_data_1 = {}

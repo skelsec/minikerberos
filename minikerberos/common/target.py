@@ -2,12 +2,12 @@
 from minikerberos.common.constants import KerberosSocketType
 
 class KerberosTarget:
-	def __init__(self, ip = None):
+	def __init__(self, ip:str = None):
 		self.ip = ip
-		self.port = 88
-		self.protocol = KerberosSocketType.TCP
+		self.port:int = 88
+		self.protocol:KerberosSocketType = KerberosSocketType.TCP
 		self.proxy = None
-		self.timeout = 10
+		self.timeout:int = 10
 
 	def __str__(self):
 		t = '===KerberosTarget===\r\n'
