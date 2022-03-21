@@ -8,9 +8,10 @@
 #
 # Be careful using this parser/writer! The specifications in the MIT Kerberos's official page doesnt match with the file Windows server generates!!
 # Thus this script is to support Windows generated keytabs, not sure about MIT's
+from __future__ import annotations
 import io
 from typing import List
-from __future__ import annotations
+
 
 class KeytabPrincipal:
     def __init__(self):

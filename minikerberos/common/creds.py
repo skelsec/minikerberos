@@ -3,13 +3,13 @@
 # Author:
 #  Tamas Jos (@skelsec)
 #
-
+from __future__ import annotations
 import getpass
 import collections
 import base64
 import platform
 from typing import List
-from __future__ import annotations
+
 
 from unicrypto import hashlib
 

@@ -5,12 +5,11 @@
 #  Dirk-jan Mollema (@_dirkjan) -parts of the PKINIT getTGT-
 #
 
-
+from __future__ import annotations
 from unicrypto import hashlib
 import collections
 import datetime
 import secrets
-from __future__ import annotations
 from typing import List
 
 from minikerberos import logger
