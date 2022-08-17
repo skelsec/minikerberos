@@ -9,6 +9,7 @@ import secrets
 
 from minikerberos import logger
 from minikerberos.aioclient import AIOKerberosClient
+from minikerberos.network.aioclientsocket import AIOKerberosClientSocket
 from minikerberos.common.spn import KerberosSPN
 from minikerberos.common.target import KerberosTarget
 from minikerberos.common.creds import KerberosCredential
@@ -19,7 +20,6 @@ from minikerberos.protocol.asn1_structs import PrincipalName, KDCOptions, \
 
 from minikerberos.protocol.errors import KerberosErrorCode
 from minikerberos.protocol.constants import NAME_TYPE, MESSAGE_TYPE
-from minikerberos.network.selector import KerberosClientSocketSelector
 
 
 class KerberosEtypeTest:
@@ -30,7 +30,7 @@ class KerberosUserEnum:
 	def __init__(self, target: KerberosTarget, spn: KerberosSPN):
 		self.target = target
 		self.spn = spn
-		self.ksoc = KerberosClientSocketSelector.select(target, True)
+		self.ksoc = AIOKerberosClientSocket(self.target)
 
 
 	def construct_tgt_req(self):
