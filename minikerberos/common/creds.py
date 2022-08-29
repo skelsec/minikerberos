@@ -65,10 +65,10 @@ class KerberosCredential:
 				return c_enctype
 
 		raise Exception('No common supported enctypes! Server: %s Client: %s' % (
-			', '.join([s_enctype.name for s_enctype in server_enctypes]),
-			', '.join([c_enctype.name for c_enctype in client_enctypes])
+				', '.join([s_enctype.name for s_enctype in server_enctypes]),
+				', '.join([c_enctype.name for c_enctype in client_enctypes])
+			)
 		)
-						)
 
 	def get_key_for_enctype(self, etype:EncryptionType, salt:bytes = None) -> bytes:
 		"""

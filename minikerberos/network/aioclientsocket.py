@@ -4,63 +4,64 @@
 #  Tamas Jos (@skelsec)
 #
 
-import asyncio
-
+from minikerberos import logger
 from minikerberos.protocol.asn1_structs import KerberosResponse
-from minikerberos.common.constants import KerberosSocketType
+from minikerberos.common.target import KerberosTarget
+from asysocks.unicomm.common.target import UniProto
+from asysocks.unicomm.client import UniClient
+from asysocks.unicomm.common.packetizers import Packetizer
+
+
+class KerberosPacketizer(Packetizer):
+	def __init__(self, buffer_size = 65535):
+		Packetizer.__init__(self, buffer_size)
+		self.buffer_size = buffer_size
+		self.in_buffer = b''
+	
+	def process_buffer(self):
+		if len(self.in_buffer) > 4:
+			length = int.from_bytes(self.in_buffer[:4], byteorder = 'big', signed = False)
+			if len(self.in_buffer) >= length:
+				data = self.in_buffer[4:4+length]
+				self.in_buffer = self.in_buffer[length+4:]
+				yield data
+				
+	async def data_out(self, data):
+		yield data
+
+	async def data_in(self, data):
+		if data is None:
+			yield data
+		self.in_buffer += data
+		for packet in self.process_buffer():
+			yield packet
 
 class AIOKerberosClientSocket:
-	def __init__(self, target):
+	def __init__(self, target:KerberosTarget):
 		self.target = target
-		#ip, port = 88, soc_type = KerberosSocketType.TCP
-		self.soc_type = target.protocol
-		self.dst_ip = target.ip
-		self.dst_port = int(target.port)
-		#self.soc = None
-		self.reader = None
-		self.writer = None
-		
-	def __str__(self):
-		t = '===KerberosSocket AIO===\r\n'
-		t += 'soc_type: %s\r\n' % self.soc_type
-		t += 'dst_ip: %s\r\n' % self.dst_ip
-		t += 'dst_port: %s\r\n' % self.dst_port
-		
-		return t		
-		
+	
 	def get_addr_str(self):
-		return '%s:%d' % (self.dst_ip, self.dst_port)
-		
-	async def create_soc(self):
-		if self.soc_type == KerberosSocketType.TCP:
-			self.reader, self.writer = await asyncio.open_connection(self.dst_ip, self.dst_port)
-		
-		elif self.soc_type == KerberosSocketType.UDP:
-			raise Exception('UDP not implemented!')
-			
-		else:
-			raise Exception('Unknown socket type!')
-			
-	async def sendrecv(self, data, throw = False):
-		await self.create_soc()
+		return '%s:%d' % (self.target.get_hostname_or_ip(), self.target.port)
+	
+	async def sendrecv(self, data, throw:bool = False):
+		client = None
+		connection = None
 		try:
-			if self.soc_type == KerberosSocketType.TCP:				
+			packetizer = KerberosPacketizer()
+			client = UniClient(self.target, packetizer)
+			connection = await client.connect()
+			if self.target.protocol == UniProto.CLIENT_TCP:
 				length = len(data).to_bytes(4, byteorder = 'big', signed = False)
-				self.writer.write(length + data)
-				await self.writer.drain()
+				await connection.write(length + data)
 				
-				t = await self.reader.readexactly(4)
-				length = int.from_bytes(t, byteorder = 'big', signed = False)
-				data = await self.reader.readexactly(length)
+				async for packet in connection.read():
+					krb_message = KerberosResponse.load(packet)
+					break
 				
-			elif self.soc_type == KerberosSocketType.UDP:
+			elif self.target.protocol == UniProto.CLIENT_UDP:
 				raise Exception('Not implemented!')
 			
-			krb_message = KerberosResponse.load(data)
 			return krb_message
 		finally:
-			self.writer.close()
-			self.reader = None
-			self.writer = None
-		
-		
+			if connection is not None:
+				await connection.close()

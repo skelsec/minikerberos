@@ -4,11 +4,12 @@ import copy
 
 from minikerberos.common.target import KerberosTarget
 from minikerberos.common.creds import KerberosCredential
-from minikerberos.common.proxy import KerberosProxy
-from minikerberos.common.constants import KerberosSocketType, KerberosSecretType
+from minikerberos.common.constants import KerberosSecretType
+
 from urllib.parse import urlparse, parse_qs
 
-from asysocks.common.clienturl import SocksClientURL 
+from asysocks.unicomm.common.target import UniProto
+from asysocks.unicomm.common.proxy import UniProxyTarget 
 
 kerberos_url_help_epilog = """==== Extra Help ====
    kerberos connection url secret types: 
@@ -46,7 +47,7 @@ kerberosclienturl_param2var = {
 }
 
 class KerberosClientURL:
-	def __init__(self, target = None, credential = None, proxy = None):
+	def __init__(self, target:KerberosTarget = None, credential = None, proxies = []):
 		self.domain = None
 		self.username = None
 		self.secret_type = None
@@ -54,25 +55,26 @@ class KerberosClientURL:
 
 
 		self.dc_ip = None
-		self.protocol = KerberosSocketType.TCP
+		self.protocol = UniProto.CLIENT_TCP
 		self.timeout = 10
 		self.port = 88
 
 		self.target = target #proxy needs to be already in the target!
 		self.credential = credential
-		self.proxy = proxy
+		self.proxies = proxies
 
 	def get_target(self):
 		if self.target is not None:
-			if self.target.proxy is None and self.proxy is not None:
-				self.target.proxy = self.proxy
+			if self.target.proxies is None and self.proxies is not None:
+				self.target.proxies = self.proxies
 			return copy.deepcopy(self.target)
-		res = KerberosTarget()
-		res.ip = self.dc_ip
-		res.port = self.port
-		res.protocol = KerberosSocketType.TCP
-		res.proxy = self.proxy
-		res.timeout = self.timeout
+		res = KerberosTarget(
+			self.dc_ip, 
+			port=self.port, 
+			protocol = UniProto.CLIENT_TCP, 
+			proxies = self.proxies,
+			timeout = self.timeout
+		)
 		return res
 
 	def get_creds(self):
@@ -138,7 +140,7 @@ class KerberosClientURL:
 			raise Exception('Unknown protocol! %s' % schemes[0])
 
 		if schemes[0].endswith('UDP') is True:
-			res.protocol = KerberosSocketType.UDP
+			res.protocol = UniProto.CLIENT_UDP
 		
 		ttype = schemes[1]
 		if ttype.find('-') != -1 and ttype.upper().endswith('-PROMPT'):
@@ -181,13 +183,7 @@ class KerberosClientURL:
 					)
 		
 		if proxy_type is not None:
-			cu = SocksClientURL.from_params(url_str)
-			cu[-1].endpoint_ip = res.dc_ip
-			cu[-1].endpoint_port = res.port
-
-			res.proxy = KerberosProxy(cu, None, type='SOCKS')
-
-
+			res.proxies = UniProxyTarget.from_url_params(url_str, res.port)
 		
 		if res.username is None:
 			raise Exception('Missing username!')

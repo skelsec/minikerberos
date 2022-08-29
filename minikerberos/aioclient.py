@@ -25,7 +25,7 @@ from minikerberos.protocol.encryption import Key, _enctype_table, _HMACMD5, Enct
 from minikerberos.protocol.constants import PaDataType, EncryptionType, NAME_TYPE, MESSAGE_TYPE
 from minikerberos.protocol.structures import AuthenticatorChecksum
 from minikerberos.gssapi.gssapi import GSSAPIFlags
-from minikerberos.network.selector import KerberosClientSocketSelector
+from minikerberos.network.aioclientsocket import AIOKerberosClientSocket
 
 from minikerberos.common.creds import KerberosCredential
 from minikerberos.common.target import KerberosTarget
@@ -38,7 +38,7 @@ class AIOKerberosClient:
 	def __init__(self, ccred:KerberosCredential, target:KerberosTarget):
 		self.usercreds = ccred
 		self.target = target
-		self.ksoc = KerberosClientSocketSelector.select(self.target, True)
+		self.ksoc = AIOKerberosClientSocket(self.target)
 		self.ccache = CCACHE() if self.usercreds.ccache is None else self.usercreds.ccache
 		self.kerberos_session_key = None
 		self.kerberos_TGT = None

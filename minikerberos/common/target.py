@@ -1,19 +1,19 @@
 
 from minikerberos.common.constants import KerberosSocketType
+from asysocks.unicomm.common.proxy import UniProxyTarget
+from asysocks.unicomm.common.target import UniTarget, UniProto
 
-class KerberosTarget:
-	def __init__(self, ip:str = None):
-		self.ip = ip
-		self.port:int = 88
-		self.protocol:KerberosSocketType = KerberosSocketType.TCP
-		self.proxy = None
-		self.timeout:int = 10
+class KerberosTarget(UniTarget):
+	def __init__(self, ip:str = None, proxies = None, protocol = UniProto.CLIENT_TCP, timeout = 10, port = 88):
+		UniTarget.__init__(self, ip, port , protocol, timeout=timeout, proxies = proxies, dc_ip = ip)
 
 	def __str__(self):
 		t = '===KerberosTarget===\r\n'
-		t += 'ip: %s\r\n' % self.ip
-		t += 'port: %s\r\n' % self.port
-		t += 'protocol: %s\r\n' % self.protocol.name
-		t += 'timeout: %s\r\n' % self.timeout
-		t += 'proxy: %s\r\n' % str(self.proxy)
+		for k in self.__dict__:
+			if isinstance(self.__dict__[k], list):
+				for x in self.__dict__[k]:
+					t += '    %s: %s\r\n' % (k, x)
+			else:
+				t += '%s: %s\r\n' % (k, self.__dict__[k])
+			
 		return t
