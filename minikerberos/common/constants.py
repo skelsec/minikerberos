@@ -1,9 +1,5 @@
 import enum
 
-class KerberosSocketType(enum.Enum):
-	UDP = enum.auto()
-	TCP = enum.auto()	
-
 class KerberosSecretType(enum.Enum):
 	PASSWORD = 'PASSWORD'
 	PW = 'PW'
@@ -21,3 +17,4 @@ class KerberosSecretType(enum.Enum):
 	KIRBI = 'KIRBI'
 	PFX = 'PFX'
 	PEM = 'PEM'
+	PFXSTR = 'PFXSTR'

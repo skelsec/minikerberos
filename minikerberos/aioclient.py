@@ -18,7 +18,7 @@ from minikerberos.protocol.asn1_structs import METHOD_DATA, ETYPE_INFO, ETYPE_IN
 	PADATA_TYPE, PA_PAC_REQUEST, PA_ENC_TS_ENC, EncryptedData, krb5_pvno, KDC_REQ_BODY, \
 	AS_REQ, TGS_REP, KDCOptions, PrincipalName, EncASRepPart, EncTGSRepPart, PrincipalName, Realm, \
 	Checksum, APOptions, Authenticator, Ticket, AP_REQ, TGS_REQ, CKSUMTYPE, \
-	PA_FOR_USER_ENC, PA_PAC_OPTIONS, PA_PAC_OPTIONSTypes
+	PA_FOR_USER_ENC, PA_PAC_OPTIONS, PA_PAC_OPTIONSTypes, EncTicketPart, AD_IF_RELEVANT
 
 from minikerberos.protocol.errors import KerberosErrorCode, KerberosError
 from minikerberos.protocol.encryption import Key, _enctype_table, _HMACMD5, Enctype, _checksum_table
@@ -40,6 +40,7 @@ class AIOKerberosClient:
 		self.target = target
 		self.ksoc = AIOKerberosClientSocket(self.target)
 		self.ccache = CCACHE() if self.usercreds.ccache is None else self.usercreds.ccache
+		self.pkinit_tkey = None
 		self.kerberos_session_key = None
 		self.kerberos_TGT = None
 		self.kerberos_TGT_encpart = None
@@ -465,6 +466,78 @@ class AIOKerberosClient:
 		logger.debug('Got valid TGS reply')
 		self.kerberos_TGS = tgs
 		return tgs, encTGSRepPart, key
+
+	async def U2U(self, kdcopts = ['forwardable','renewable','canonicalize', 'enc-tkt-in-skey'], supp_enc_methods = [EncryptionType.DES_CBC_CRC,EncryptionType.DES_CBC_MD4,EncryptionType.DES_CBC_MD5,EncryptionType.DES3_CBC_SHA1,EncryptionType.ARCFOUR_HMAC_MD5,EncryptionType.AES256_CTS_HMAC_SHA1_96,EncryptionType.AES128_CTS_HMAC_SHA1_96]):
+		if not self.kerberos_TGT:
+			logger.debug('[U2U] TGT is not available! Fetching TGT...')
+			await self.get_TGT()
+
+		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
+		now = datetime.datetime.now(datetime.timezone.utc)
+		authenticator_data = {}
+		authenticator_data['authenticator-vno'] = krb5_pvno
+		authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
+		authenticator_data['cname'] = self.kerberos_TGT['cname']
+		authenticator_data['cusec'] = now.microsecond
+		authenticator_data['ctime'] = now.replace(microsecond=0)
+
+
+		authenticator_data_enc = self.kerberos_cipher.encrypt(self.kerberos_session_key, 7, Authenticator(authenticator_data).dump(), None)
+
+		ap_req = {}
+		ap_req['pvno'] = krb5_pvno
+		ap_req['msg-type'] = MESSAGE_TYPE.KRB_AP_REQ.value
+		ap_req['ap-options'] = APOptions(set())
+		ap_req['ticket'] = Ticket(self.kerberos_TGT['ticket'])
+		ap_req['authenticator'] = EncryptedData({'etype': self.kerberos_cipher_type, 'cipher': authenticator_data_enc})
+
+		pa_data_auth = {}
+		pa_data_auth['padata-type'] = PaDataType.TGS_REQ.value
+		pa_data_auth['padata-value'] = AP_REQ(ap_req).dump()
+
+		
+		krb_tgs_body = {}
+		krb_tgs_body['kdc-options'] = KDCOptions(set(kdcopts))
+		krb_tgs_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
+		krb_tgs_body['realm'] = self.usercreds.domain.upper()
+		krb_tgs_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
+		krb_tgs_body['nonce'] = secrets.randbits(31)
+		krb_tgs_body['etype'] = [23] # dunno why it must be 23?
+		krb_tgs_body['additional-tickets'] = [Ticket(self.kerberos_TGT['ticket'])]
+		
+		
+		krb_tgs_req = {}
+		krb_tgs_req['pvno'] = krb5_pvno
+		krb_tgs_req['msg-type'] = MESSAGE_TYPE.KRB_TGS_REQ.value
+		krb_tgs_req['padata'] = [pa_data_auth] #pa_for_user
+		krb_tgs_req['req-body'] = KDC_REQ_BODY(krb_tgs_body)
+		
+		
+		
+		req = TGS_REQ(krb_tgs_req)
+		logger.debug('[U2U] Sending request to server')
+		
+		reply = await self.ksoc.sendrecv(req.dump())
+		if reply.name == 'KRB_ERROR':
+			emsg = '[U2U] failed!'
+			if reply.native['error-code'] == 16:
+				emsg = '[U2U] Failed to get U2U! Error code (16) indicates that delegation is not enabled for this account!'			
+			raise KerberosError(reply, emsg)
+		
+		logger.debug('[U2U] Got reply, decrypting...')
+		tgs = reply.native
+
+		cipher = _enctype_table[int(tgs['ticket']['enc-part']['etype'])]
+		encticket = tgs['ticket']['enc-part']['cipher']
+		decdata = cipher.decrypt(self.kerberos_session_key, 2, encticket)
+		decticket = EncTicketPart.load(decdata).native
+
+		encTGSRepPart = EncTGSRepPart.load(self.kerberos_cipher.decrypt(self.kerberos_session_key, 8, tgs['enc-part']['cipher'])).native
+		key = Key(encTGSRepPart['key']['keytype'], encTGSRepPart['key']['keyvalue'])
+		self.ccache.add_tgs(tgs, encTGSRepPart)
+		logger.debug('[U2U] Got valid TGS reply')
+
+		return tgs, encTGSRepPart, key, decticket
 	
 	#https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/6a8dfc0c-2d32-478a-929f-5f9b1b18a169
 	async def S4U2self(self, user_to_impersonate, spn_user = None, kdcopts = ['forwardable','renewable','canonicalize'], supp_enc_methods = [EncryptionType.DES_CBC_CRC,EncryptionType.DES_CBC_MD4,EncryptionType.DES_CBC_MD5,EncryptionType.DES3_CBC_SHA1,EncryptionType.ARCFOUR_HMAC_MD5,EncryptionType.AES256_CTS_HMAC_SHA1_96,EncryptionType.AES128_CTS_HMAC_SHA1_96]):
@@ -474,7 +547,7 @@ class AIOKerberosClient:
 		
 		if not self.kerberos_TGT:
 			logger.debug('[S4U2self] TGT is not available! Fetching TGT...')
-			self.get_TGT()
+			await self.get_TGT()
 		
 		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
 		auth_package_name = 'Kerberos'
@@ -497,6 +570,7 @@ class AIOKerberosClient:
 		ap_req['ap-options'] = APOptions(set())
 		ap_req['ticket'] = Ticket(self.kerberos_TGT['ticket'])
 		ap_req['authenticator'] = EncryptedData({'etype': self.kerberos_cipher_type, 'cipher': authenticator_data_enc})
+		
 		
 		pa_data_auth = {}
 		pa_data_auth['padata-type'] = PaDataType.TGS_REQ.value
@@ -770,18 +844,58 @@ class AIOKerberosClient:
 		etype = as_rep['enc-part']['etype']
 		cipher = _enctype_table[etype]
 		if etype == Enctype.AES256:
-			t_key = truncate_key(fullKey, 32)
+			self.pkinit_tkey = truncate_key(fullKey, 32)
 		elif etype == Enctype.AES128:
-			t_key = truncate_key(fullKey, 16)
+			self.pkinit_tkey = truncate_key(fullKey, 16)
 		elif etype == Enctype.RC4:
 			raise NotImplementedError('RC4 key truncation documentation missing. it is different from AES')
-			#t_key = truncate_key(fullKey, 16)
+			#self.pkinit_tkey = truncate_key(fullKey, 16)
 		
 
-		key = Key(cipher.enctype, t_key)
+		key = Key(cipher.enctype, self.pkinit_tkey)
 		enc_data = as_rep['enc-part']['cipher']
 		dec_data = cipher.decrypt(key, 3, enc_data)
 		encasrep = EncASRepPart.load(dec_data).native
 		cipher = _enctype_table[ int(encasrep['key']['keytype'])]
 		session_key = Key(cipher.enctype, encasrep['key']['keyvalue'])
 		return encasrep, session_key, cipher
+
+
+	def get_NT_from_PAC(self, decticket:EncTicketPart, truncated_keydata=None):
+		from minikerberos.protocol.external.rpcrt import TypeSerialization1
+		from minikerberos.protocol.external.pac import PACTYPE, PAC_INFO_BUFFER, \
+			PAC_CREDENTIAL_INFO, PAC_CREDENTIAL_DATA, NTLM_SUPPLEMENTAL_CREDENTIAL
+
+		
+		adIfRelevant = AD_IF_RELEVANT.load(decticket['authorization-data'][0]['ad-data'])		
+		if truncated_keydata is None:
+			truncated_keydata = self.pkinit_tkey
+		if truncated_keydata is None:
+			raise Exception("Missing tkey! Is this a PKINIT session?")
+		key = Key(18, truncated_keydata)
+		pacType = PACTYPE(adIfRelevant.native[0]['ad-data'])
+		buff = pacType['Buffers']
+		creds = []
+		for bufferN in range(pacType['cBuffers']):
+			infoBuffer = PAC_INFO_BUFFER(buff)
+			data = pacType['Buffers'][infoBuffer['Offset']-8:][:infoBuffer['cbBufferSize']]
+			logger.debug("TYPE 0x%x" % infoBuffer['ulType'])
+			if infoBuffer['ulType'] == 2:
+				credinfo = PAC_CREDENTIAL_INFO(data)
+				newCipher = _enctype_table[credinfo['EncryptionType']]
+
+				out = newCipher.decrypt(key, 16, credinfo['SerializedData'])
+				type1 = TypeSerialization1(out)
+				# I'm skipping here 4 bytes with its the ReferentID for the pointer
+				newdata = out[len(type1)+4:]
+				pcc = PAC_CREDENTIAL_DATA(newdata)
+				for cred in pcc['Credentials']:
+					credstruct = NTLM_SUPPLEMENTAL_CREDENTIAL(b''.join(cred['Credentials']))
+					if credstruct['NtPassword'] != b'\x00'*16:
+						creds.append(('NT', credstruct['NtPassword'].hex()))
+					if credstruct['LmPassword'] != b'\x00'*16:
+						creds.append(('LM', credstruct['LmPassword'].hex()))
+
+			buff = buff[len(infoBuffer):]
+		
+		return creds

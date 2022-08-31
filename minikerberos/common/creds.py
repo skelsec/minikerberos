@@ -21,14 +21,6 @@ from minikerberos.common.keytab import Keytab
 from asn1crypto import cms
 from asn1crypto import algos
 from minikerberos.protocol.dirtydh import DirtyDH
-
-import oscrypto
-if platform.system().lower() == 'emscripten':
-	# these imports are pyodide-specific
-	# the special "openssl" module MUST be imported via JS before attempting this!
-	import ssl
-	oscrypto.use_openssl('/lib/python3.9/site-packages/libcrypto.so', '/lib/python3.9/site-packages/libssl.so')
-
 from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
 from oscrypto.keys import parse_pkcs12, parse_certificate, parse_private
 
@@ -169,38 +161,48 @@ class KerberosCredential:
 		return cred
 
 	@staticmethod
+	def from_keytab_string(self, keytabdata: str|bytes, principal: str, realm: str) -> KerberosCredential:
+		cred = KerberosCredential()
+		cred.username = principal
+		cred.domain = realm
+
+		if isinstance(keytabdata, str):
+			keytabdata = base64.b64decode(keytabdata.replace(' ','').replace('\r','').replace('\n','').replace('\t','').replace('','').encode())
+		
+		keytab = Keytab.from_bytes(keytabdata)
+
+		for keytab_entry in keytab.entries:
+			if realm == keytab_entry.principal.realm.to_string():
+				for keytab_principal in keytab_entry.principal.components:
+					if principal == keytab_principal.to_string():
+						enctype = None
+						if Enctype.AES256 == keytab_entry.enctype:
+							enctype = KerberosSecretType.AES256
+						elif Enctype.AES128 == keytab_entry.enctype:
+							enctype = KerberosSecretType.AES128
+						elif Enctype.DES3 == keytab_entry.enctype:
+							enctype = KerberosSecretType.DES3
+						elif Enctype.DES_CRC == keytab_entry.enctype:
+							enctype = KerberosSecretType.DES
+						elif Enctype.DES_MD4 == keytab_entry.enctype:
+							enctype = KerberosSecretType.DES
+						elif Enctype.DES_MD5 == keytab_entry.enctype:
+							enctype = KerberosSecretType.DES
+						elif Enctype.RC4 == keytab_entry.enctype:
+							enctype = KerberosSecretType.RC4
+						if enctype:
+							cred.add_secret(enctype, keytab_entry.key_contents.hex())
+		
+		return cred
+
+	@staticmethod
 	def from_keytab(keytab_file_path: str, principal: str, realm: str) -> KerberosCredential:
 		cred = KerberosCredential()
 		cred.username = principal
 		cred.domain = realm
 
 		with open(keytab_file_path, 'rb') as kf:
-			#keytab_bytes = kf.read()
-			#keytab = Keytab.from_bytes(keytab_bytes)
-			keytab = Keytab.from_buffer(kf)
-
-			for keytab_entry in keytab.entries:
-				if realm == keytab_entry.principal.realm.to_string():
-					for keytab_principal in keytab_entry.principal.components:
-						if principal == keytab_principal.to_string():
-							enctype = None
-							if Enctype.AES256 == keytab_entry.enctype:
-								enctype = KerberosSecretType.AES256
-							elif Enctype.AES128 == keytab_entry.enctype:
-								enctype = KerberosSecretType.AES128
-							elif Enctype.DES3 == keytab_entry.enctype:
-								enctype = KerberosSecretType.DES3
-							elif Enctype.DES_CRC == keytab_entry.enctype:
-								enctype = KerberosSecretType.DES
-							elif Enctype.DES_MD4 == keytab_entry.enctype:
-								enctype = KerberosSecretType.DES
-							elif Enctype.DES_MD5 == keytab_entry.enctype:
-								enctype = KerberosSecretType.DES
-							elif Enctype.RC4 == keytab_entry.enctype:
-								enctype = KerberosSecretType.RC4
-							if enctype:
-								cred.add_secret(enctype, keytab_entry.key_contents.hex())
-		return cred
+			return KerberosCredential.from_keytab_string(kf.read(), principal, realm)
 
 	@staticmethod
 	def from_ccache_file(filepath, principal: str = None, realm: str = None) -> KerberosCredential:

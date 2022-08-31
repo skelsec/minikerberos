@@ -2,16 +2,14 @@
 import socket
 
 from minikerberos.protocol.asn1_structs import KerberosResponse
-from minikerberos.common.constants import KerberosSocketType
 from minikerberos.protocol.errors import KerberosErrorCode, KerberosError
-
+from asysocks.unicomm.common.target import UniProto
 
 class KerberosClientSocket:
 	def __init__(self, target):
 		self.target = target
-		#ip, port = 88, soc_type = KerberosSocketType.TCP
 		self.soc_type = target.protocol
-		self.dst_ip = target.ip
+		self.dst_ip = target.get_hostname_or_ip()
 		self.dst_port = int(target.port)
 		self.soc = None
 		
@@ -27,11 +25,11 @@ class KerberosClientSocket:
 		return '%s:%d' % (self.dst_ip, self.dst_port)
 		
 	def create_soc(self):
-		if self.soc_type == KerberosSocketType.TCP:
+		if self.soc_type == UniProto.CLIENT_TCP:
 			self.soc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			self.soc.connect((self.dst_ip, self.dst_port))
 
-		elif self.soc_type == KerberosSocketType.UDP:
+		elif self.soc_type == UniProto.CLIENT_UDP:
 			self.soc = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 			
 		else:
@@ -43,7 +41,7 @@ class KerberosClientSocket:
 
 		self.create_soc()
 		try:
-			if self.soc_type == KerberosSocketType.TCP:
+			if self.soc_type == UniProto.CLIENT_TCP:
 				length = len(data).to_bytes(4, byteorder = 'big', signed = False)
 				self.soc.sendall(length + data)
 				buff = b''
@@ -70,7 +68,7 @@ class KerberosClientSocket:
 							continue
 							
 				
-			elif self.soc_type == KerberosSocketType.UDP:
+			elif self.soc_type == UniProto.CLIENT_UDP:
 				self.soc.sendto(data, (self.dst_ip, self.dst_port))
 				while True:
 					buff, addr = self.soc.recvfrom(65535)

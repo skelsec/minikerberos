@@ -39,15 +39,21 @@ kerberos_url_help_epilog = """==== Extra Help ====
       kerberos+ccache://domain\\user:creds.ccache@127.0.0.1
    - KEYTAB file:
       kerberos+keytab://domain\\user:creds.keytab@127.0.0.1
+   - PFX file:
+      kerberos+pfx://TEST.corp\Administrator:admin@10.10.10.2/?certdata=test.pfx
+   - PFX string (b64):
+      kerberos+pfxstr://TEST.corp\Administrator:admin@10.10.10.2/?certdata=BASE64DATA
+
 """
 
 
 kerberosclienturl_param2var = {
 	'timeout': ('timeout', [int]),
+	'certdata': ('certdata', [str]),
 }
 
 class KerberosClientURL:
-	def __init__(self, target:KerberosTarget = None, credential = None, proxies = []):
+	def __init__(self, target:KerberosTarget = None, credential = None, proxies = [], certdata = None):
 		self.domain = None
 		self.username = None
 		self.secret_type = None
@@ -62,6 +68,7 @@ class KerberosClientURL:
 		self.target = target #proxy needs to be already in the target!
 		self.credential = credential
 		self.proxies = proxies
+		self.certdata = certdata
 
 	def get_target(self):
 		if self.target is not None:
@@ -85,6 +92,10 @@ class KerberosClientURL:
 			return KerberosCredential.from_keytab(self.secret, self.username, self.domain)
 		if self.secret_type == KerberosSecretType.KIRBI:
 			return KerberosCredential.from_kirbi(self.secret)
+		if self.secret_type == KerberosSecretType.PFXSTR:
+			return KerberosCredential.from_pfx_string(self.certdata, self.secret)
+		if self.secret_type == KerberosSecretType.PFX:
+			return KerberosCredential.from_pfx_file(self.certdata, self.secret, username=self.username, domain=self.domain)
 
 		res = KerberosCredential()
 		res.username = self.username

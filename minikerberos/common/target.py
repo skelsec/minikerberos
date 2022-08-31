@@ -1,6 +1,4 @@
 
-from minikerberos.common.constants import KerberosSocketType
-from asysocks.unicomm.common.proxy import UniProxyTarget
 from asysocks.unicomm.common.target import UniTarget, UniProto
 
 class KerberosTarget(UniTarget):

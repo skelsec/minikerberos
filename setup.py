@@ -60,6 +60,7 @@ setup(
 			'getTGS = minikerberos.examples.getTGS:main',
 			'getS4U2proxy = minikerberos.examples.getS4U2proxy:main',
 			'getS4U2self  = minikerberos.examples.getS4U2self:main',
+			'getNTPKInit  = minikerberos.examples.getNT:main',
 		],
 	}
 )
