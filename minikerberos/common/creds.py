@@ -24,7 +24,21 @@ from minikerberos.protocol.dirtydh import DirtyDH
 from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
 from oscrypto.keys import parse_pkcs12, parse_certificate, parse_private
 
-
+def get_encoded_data(data:bytes|str, encoding = 'file') -> bytes:
+	if encoding == 'file':
+		with open(data, 'rb') as kf:
+			return kf.read()
+	elif encoding == 'hex':
+		return bytes.fromhex(data)
+	elif encoding == 'b64' or encoding == 'base64':
+		if isinstance(data, str):
+			data = data.encode()
+		return base64.b64decode(data)
+	elif encoding == 'raw':
+		if isinstance(data, str):
+			data = data.encode()
+		return data
+	raise Exception('Unknown encoding "%s"!' % encoding)
 
 class KerberosCredential:
 	def __init__(self):
@@ -116,6 +130,9 @@ class KerberosCredential:
 			raise Exception('Unsupported encryption type: %s' % etype.name)
 
 	def get_supported_enctypes(self, as_int = True) -> List[EncryptionType]:
+		"""
+		Returns a list of all EncryptionTypes this credentials can use for authentication
+		"""
 		supp_enctypes = collections.OrderedDict()
 		if self.kerberos_key_aes_256:
 			supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
@@ -146,20 +163,50 @@ class KerberosCredential:
 		if as_int == True:
 			return [etype.value for etype in supp_enctypes]
 		return [etype for etype in supp_enctypes]
+
+	@staticmethod
+	def from_keytab(keytab_file_path: str, principal: str, realm: str, encoding = 'file') -> KerberosCredential:
+		"""Returns a kerberos credential object from Keytab file/data"""
+		cred = KerberosCredential()
+		cred.username = principal
+		cred.domain = realm
+		data = get_encoded_data(keytab_file_path, encoding=encoding)
+		return KerberosCredential.from_keytab_string(data, principal, realm)
+
+	@staticmethod
+	def from_ccache(data, principal: str = None, realm: str = None, encoding = 'file') -> KerberosCredential:
+		"""Returns a kerberos credential object with CCACHE database"""
+		data = get_encoded_data(data, encoding=encoding)
+		k = KerberosCredential()
+		k.username = principal
+		k.domain = realm
+		k.ccache = CCACHE.from_bytes(data)
+		return k
+
+	@staticmethod
+	def from_kirbi(keytab_file_path: str, principal: str = None, realm: str = None, encoding = 'file') -> KerberosCredential:
+		"""Returns a kerberos credential object from .kirbi file"""
+		data = get_encoded_data(keytab_file_path, encoding=encoding)
+		cred = KerberosCredential()
+		cred.username = principal
+		cred.domain = realm
+		cred.ccache = CCACHE.from_kirbi(data)
+		cred.ccache_spn_strict_check = False
+		return cred
+	
+	@staticmethod
+	def from_pfx(data:str, password:str, dhparams:DirtyDH = None, username:str = None, domain:str = None, encoding = 'file') -> KerberosCredential:
+		"""
+		Retruns a credential object from data found in the PFX file
+		Username and domain will override the values found in the certificate
+		"""
+		data = get_encoded_data(data, encoding=encoding)
+		return KerberosCredential.from_pfx_string(data, password, dhparams = dhparams, username = username, domain = domain)
 	
 	@staticmethod
 	def from_krbcred(keytab_file_path: str, principal: str = None, realm: str = None) -> KerberosCredential:
 		return KerberosCredential.from_kirbi(keytab_file_path, principal, realm)
-
-	@staticmethod
-	def from_kirbi(keytab_file_path: str, principal: str = None, realm: str = None) -> KerberosCredential:
-		cred = KerberosCredential()
-		cred.username = principal
-		cred.domain = realm
-		cred.ccache = CCACHE.from_kirbifile(keytab_file_path)
-		cred.ccache_spn_strict_check = False
-		return cred
-
+	
 	@staticmethod
 	def from_keytab_string(self, keytabdata: str|bytes, principal: str, realm: str) -> KerberosCredential:
 		cred = KerberosCredential()
@@ -196,16 +243,8 @@ class KerberosCredential:
 		return cred
 
 	@staticmethod
-	def from_keytab(keytab_file_path: str, principal: str, realm: str) -> KerberosCredential:
-		cred = KerberosCredential()
-		cred.username = principal
-		cred.domain = realm
-
-		with open(keytab_file_path, 'rb') as kf:
-			return KerberosCredential.from_keytab_string(kf.read(), principal, realm)
-
-	@staticmethod
 	def from_ccache_file(filepath, principal: str = None, realm: str = None) -> KerberosCredential:
+		"""Depricated! Use from_ccache with proper encoding instead!"""
 		k = KerberosCredential()
 		k.username = principal
 		k.domain = realm
