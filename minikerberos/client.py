@@ -24,6 +24,7 @@ from minikerberos.protocol.encryption import Key, _enctype_table, _HMACMD5, Enct
 from minikerberos.protocol.constants import PaDataType, EncryptionType, NAME_TYPE, MESSAGE_TYPE
 from minikerberos.protocol.structures import AuthenticatorChecksum
 from minikerberos.protocol.rfc4556 import PKAuthenticator, AuthPack, PA_PK_AS_REP, KDCDHKeyInfo, PA_PK_AS_REQ
+from minikerberos.gssapi.channelbindings import ChannelBindingsStruct
 
 from asn1crypto import cms
 from asn1crypto import core
@@ -594,7 +595,9 @@ class KerbrosClient:
 
 			ac.channel_binding = b'\x00'*16
 			if cb_data is not None:
-				ac.channel_binding = hashlib.md5(cb_data).digest()
+				cb_struct = ChannelBindingsStruct()
+				cb_struct.application_data = cb_data
+				ac.channel_binding = hashlib.md5(cb_struct.to_bytes()).digest()
 			
 			chksum = {}
 			chksum['cksumtype'] = 0x8003
@@ -632,7 +635,9 @@ class KerbrosClient:
 			ac.flags = flags
 			ac.channel_binding = b'\x00'*16
 			if cb_data is not None:
-				ac.channel_binding = hashlib.md5(cb_data).digest()
+				cb_struct = ChannelBindingsStruct()
+				cb_struct.application_data = cb_data
+				ac.channel_binding = hashlib.md5(cb_struct.to_bytes()).digest()
 			
 			chksum = {}
 			chksum['cksumtype'] = 0x8003

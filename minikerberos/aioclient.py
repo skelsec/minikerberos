@@ -30,6 +30,7 @@ from minikerberos.network.aioclientsocket import AIOKerberosClientSocket
 from minikerberos.common.creds import KerberosCredential
 from minikerberos.common.target import KerberosTarget
 from minikerberos.protocol.rfc4556 import PKAuthenticator, AuthPack, PA_PK_AS_REP, KDCDHKeyInfo, PA_PK_AS_REQ
+from minikerberos.gssapi.channelbindings import ChannelBindingsStruct
 
 from asn1crypto import cms
 from asn1crypto import core
@@ -737,7 +738,9 @@ class AIOKerberosClient:
 
 			ac.channel_binding = b'\x00'*16
 			if cb_data is not None:
-				ac.channel_binding = hashlib.md5(cb_data).digest()
+				cb_struct = ChannelBindingsStruct()
+				cb_struct.application_data = cb_data
+				ac.channel_binding = hashlib.md5(cb_struct.to_bytes()).digest()
 			
 			chksum = {}
 			chksum['cksumtype'] = 0x8003
@@ -776,7 +779,9 @@ class AIOKerberosClient:
 			ac.flags = flags
 			ac.channel_binding = b'\x00'*16
 			if cb_data is not None:
-				ac.channel_binding = hashlib.md5(cb_data).digest()
+				cb_struct = ChannelBindingsStruct()
+				cb_struct.application_data = cb_data
+				ac.channel_binding = hashlib.md5(cb_struct.to_bytes()).digest()
 			
 			chksum = {}
 			chksum['cksumtype'] = 0x8003
