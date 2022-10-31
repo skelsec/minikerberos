@@ -65,29 +65,34 @@ class AIOKerberosClient:
 		kc.kerberos_cipher = _enctype_table[kc.kerberos_cipher_type]
 		return kc
 
-	def build_asreq_lts(self, supported_encryption_method, kdcopts:List[str] = ['forwardable','renewable','proxiable']) -> AS_REQ:
+	def build_asreq_lts(self, supported_encryption_method, kdcopts:List[str] = ['forwardable','renewable','proxiable'], enctimestamp=None, newnow=None, no_preauth = False, kdc_req_body_extra = None) -> AS_REQ:
 		logger.debug('Constructing TGT request with auth data')
 		#now to create an AS_REQ with encrypted timestamp for authentication
+		padatas = []
 		pa_data_1 = {}
 		pa_data_1['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
 		pa_data_1['padata-value'] = PA_PAC_REQUEST({'include-pac': True}).dump()
-		
-		now = datetime.datetime.now(datetime.timezone.utc)
-		#creating timestamp asn1
-		timestamp = PA_ENC_TS_ENC({'patimestamp': now.replace(microsecond=0), 'pausec': now.microsecond}).dump()
-		
+		padatas.append(pa_data_1)
 		
 		logger.debug('Selecting common encryption type: %s' % supported_encryption_method.name)
-		self.kerberos_cipher = _enctype_table[supported_encryption_method.value]
-		self.kerberos_cipher_type = supported_encryption_method.value
-		self.kerberos_key = Key(self.kerberos_cipher.enctype, self.usercreds.get_key_for_enctype(supported_encryption_method, salt = self.server_salt))
-		enc_timestamp = self.kerberos_cipher.encrypt(self.kerberos_key, 1, timestamp, None)
+		if enctimestamp is None:
+			now = datetime.datetime.now(datetime.timezone.utc)
+			#creating timestamp asn1
+			timestamp = PA_ENC_TS_ENC({'patimestamp': now.replace(microsecond=0), 'pausec': now.microsecond}).dump()
+			self.kerberos_cipher = _enctype_table[supported_encryption_method.value]
+			self.kerberos_cipher_type = supported_encryption_method.value
+			self.kerberos_key = Key(self.kerberos_cipher.enctype, self.usercreds.get_key_for_enctype(supported_encryption_method, salt = self.server_salt))
+			enc_timestamp = self.kerberos_cipher.encrypt(self.kerberos_key, 1, timestamp, None)
+		else:
+			now = newnow
+			enc_timestamp = enctimestamp
 		
-		
-		pa_data_2 = {}
-		pa_data_2['padata-type'] = int(PADATA_TYPE('ENC-TIMESTAMP'))
-		pa_data_2['padata-value'] = EncryptedData({'etype': supported_encryption_method.value, 'cipher': enc_timestamp}).dump()
-		
+		if no_preauth is False:
+			pa_data_2 = {}
+			pa_data_2['padata-type'] = int(PADATA_TYPE('ENC-TIMESTAMP'))
+			pa_data_2['padata-value'] = EncryptedData({'etype': supported_encryption_method.value, 'cipher': enc_timestamp}).dump()
+			padatas.append(pa_data_2)
+
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(kdcopts))
 		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
@@ -98,10 +103,14 @@ class AIOKerberosClient:
 		kdc_req_body['nonce'] = secrets.randbits(31)
 		kdc_req_body['etype'] = [supported_encryption_method.value] #selecting according to server's preferences
 		
+		if kdc_req_body_extra is not None:
+			for key in kdc_req_body_extra:
+				kdc_req_body[key] = kdc_req_body_extra[key]
+		
 		kdc_req = {}
 		kdc_req['pvno'] = krb5_pvno
 		kdc_req['msg-type'] = MESSAGE_TYPE.KRB_AS_REQ.value
-		kdc_req['padata'] = [pa_data_2,pa_data_1]
+		kdc_req['padata'] = padatas
 		kdc_req['req-body'] = KDC_REQ_BODY(kdc_req_body)
 		
 		return AS_REQ(kdc_req)
@@ -228,7 +237,7 @@ class AIOKerberosClient:
 		#now getting server's supported encryption methods
 		
 		supp_enc_methods = collections.OrderedDict()
-		for enc_method in METHOD_DATA.load(rep['e-data']).native:					
+		for enc_method in METHOD_DATA.load(rep['e-data']).native:
 			data_type = PaDataType(enc_method['padata-type'])
 			
 			if data_type == PaDataType.ETYPE_INFO or data_type == PaDataType.ETYPE_INFO2:
@@ -298,16 +307,17 @@ class AIOKerberosClient:
 				
 		if rep.name != 'KRB_ERROR':
 			#user can do kerberos auth without preauthentication!
-			self.kerberos_TGT = rep.native
+			rep = rep.native
+			self.kerberos_TGT = rep
 
 			#if we want to roast the asrep (tgt rep) part then we dont even have the proper keys to decrypt
 			#so we just return, the asrep can be extracted from this object anyhow
 			if decrypt_tgt == False:
-				return
+				return rep
 
-			self.kerberos_cipher = _enctype_table[23]
-			self.kerberos_cipher_type = 23
-			self.kerberos_key = Key(self.kerberos_cipher.enctype, self.usercreds.get_key_for_enctype(EncryptionType.ARCFOUR_HMAC_MD5))
+			self.kerberos_cipher = _enctype_table[rep['enc-part']['etype']]
+			self.kerberos_cipher_type = rep['enc-part']['etype']
+			self.kerberos_key = Key(self.kerberos_cipher.enctype, self.usercreds.get_key_for_enctype(EncryptionType(rep['enc-part']['etype'])))
 			
 		else:
 			if rep.native['error-code'] != KerberosErrorCode.KDC_ERR_PREAUTH_REQUIRED.value:
@@ -334,7 +344,6 @@ class AIOKerberosClient:
 		else:
 			cipherText = rep['enc-part']['cipher']
 			temp = self.kerberos_cipher.decrypt(self.kerberos_key, 3, cipherText)
-		
 			try:
 				self.kerberos_TGT_encpart = EncASRepPart.load(temp).native
 			except Exception as e:
@@ -344,7 +353,7 @@ class AIOKerberosClient:
 				except Exception as e:
 					logger.error('Failed to load decrypted part of the reply!')
 					raise e
-					
+			
 			self.kerberos_session_key = Key(self.kerberos_cipher.enctype, self.kerberos_TGT_encpart['key']['keyvalue'])
 			self.ccache.add_tgt(self.kerberos_TGT, self.kerberos_TGT_encpart, override_pp = True)
 			logger.debug('Got valid TGT')

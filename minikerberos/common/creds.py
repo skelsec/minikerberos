@@ -125,6 +125,17 @@ class KerberosCredential:
 				return string_to_key(Enctype.DES_MD5, self.password.encode(), salt).contents
 			else:
 				raise Exception('There is no key for DES3 encryption')
+		
+		elif etype == EncryptionType.ARCFOUR_MD4:
+			if self.kerberos_key_rc4:
+				return bytes.fromhex(self.kerberos_key_rc4)[:8]
+			if self.nt_hash:
+				return bytes.fromhex(self.nt_hash)[:8]
+			elif self.password:
+				self.nt_hash = hashlib.md4(self.password.encode('utf-16-le')).hexdigest().upper()
+				return bytes.fromhex(self.nt_hash)[:8]
+			else:
+				raise Exception('There is no key for RC4 encryption')
 
 		else:
 			raise Exception('Unsupported encryption type: %s' % etype.name)
@@ -145,11 +156,13 @@ class KerberosCredential:
 			supp_enctypes[EncryptionType.DES_CBC_MD5] = 1
 			supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
 			supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
+			supp_enctypes[EncryptionType.ARCFOUR_MD4] = 1
 			supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
 			supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
 
 		if self.password or self.nt_hash or self.kerberos_key_rc4:
 			supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
+			supp_enctypes[EncryptionType.ARCFOUR_MD4] = 1
 
 		if self.kerberos_key_des:
 			supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1

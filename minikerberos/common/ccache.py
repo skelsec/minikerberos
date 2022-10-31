@@ -269,15 +269,15 @@ class Keyblock:
 	@staticmethod
 	def parse(reader):
 		k = Keyblock()
-		k.keytype = int.from_bytes(reader.read(2), byteorder='big', signed=False)
-		k.etype = int.from_bytes(reader.read(2), byteorder='big', signed=False)
+		k.keytype = int.from_bytes(reader.read(2), byteorder='big', signed=True)
+		k.etype = int.from_bytes(reader.read(2), byteorder='big', signed=True)
 		k.keylen = int.from_bytes(reader.read(2), byteorder='big', signed=False)
 		k.keyvalue = reader.read(k.keylen)
 		return k
 		
 	def to_bytes(self):
-		t = self.keytype.to_bytes(2, byteorder='big', signed=False)
-		t += self.etype.to_bytes(2, byteorder='big', signed=False)
+		t = self.keytype.to_bytes(2, byteorder='big', signed=True)
+		t += self.etype.to_bytes(2, byteorder='big', signed=True)
 		t += self.keylen.to_bytes(2, byteorder='big', signed=False)
 		t += self.keyvalue
 		return t

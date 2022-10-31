@@ -378,7 +378,7 @@ def get_gssapi(session_key):
 		return GSSAPI_AES(session_key, encryption._AES256CTS, encryption._SHA1AES256)
 	if session_key.enctype == encryption.Enctype.AES128:
 		return GSSAPI_AES(session_key, encryption._AES128CTS, encryption._SHA1AES128)
-	elif session_key.enctype == encryption.Enctype.RC4:
+	elif session_key.enctype in [encryption.Enctype.RC4, encryption.Enctype.RC4_MD4]:
 		return GSSAPI_RC4(session_key)
 	else:
 		raise Exception('Unsupported etype %s' % session_key.enctype)

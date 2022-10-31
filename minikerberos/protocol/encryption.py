@@ -76,6 +76,7 @@ class Enctype(object):
 	AES128 = 17
 	AES256 = 18
 	RC4 = 23
+	RC4_MD4 = -128
 
 
 class Cksumtype(object):
@@ -558,6 +559,42 @@ class _RC4(_EnctypeProfile):
 		return HMAC.new(key.contents, string, SHA).digest()
 
 
+class _RC4_MD4(_EnctypeProfile):
+	# not to be confused with RC4_HMAC_OLD
+	enctype = Enctype.RC4_MD4
+	keysize = 8
+	seedsize = 8
+
+	@staticmethod
+	def usage_str(keyusage):
+		# no such thing
+		return b''
+
+	@classmethod
+	def string_to_key(cls, string, salt, params):
+		utf16string = string.decode('UTF-8').encode('UTF-16LE')
+		data = md4(utf16string).digest() #hashlib.new('md4', utf16string).digest()
+		return Key(cls.enctype, data[:8])
+
+	@classmethod
+	def encrypt(cls, key, keyusage, plaintext, confounder):
+		confounder = b'\x00'*24 # no idea what this should be...
+		return ARC4(key.contents[:8]).encrypt(confounder + plaintext)
+
+	@classmethod
+	def decrypt(cls, key, keyusage, ciphertext):
+		basic_plaintext = ARC4(key.contents[:8]).encrypt(ciphertext)
+		ok = _mac_equal(basic_plaintext[:24], b'\x00'*24)
+		if not ok:
+			raise InvalidChecksum('ciphertext integrity failure')
+		return basic_plaintext[24:]
+
+	@classmethod
+	def prf(cls, key, string):
+		raise NotImplementedError()
+
+
+
 class _ChecksumProfile(object):
 	# Base class for checksum profiles.  Usable checksum classes must
 	# define:
@@ -624,7 +661,8 @@ _enctype_table:Dict[str, _SimplifiedEnctype] = {
 	Enctype.DES3: _DES3CBC,
 	Enctype.AES128: _AES128CTS,
 	Enctype.AES256: _AES256CTS,
-	Enctype.RC4: _RC4
+	Enctype.RC4: _RC4,
+	Enctype.RC4_MD4: _RC4_MD4,
 }
 
 
@@ -651,9 +689,10 @@ def _get_checksum_profile(cksumtype):
 
 class Key(object):
 	def __init__(self, enctype:Enctype, contents:bytes):
-		e = _get_enctype_profile(enctype)
-		if len(contents) != e.keysize:
-			raise ValueError('Wrong key length')
+		if enctype != Enctype.RC4_MD4:
+			e = _get_enctype_profile(enctype)
+			if len(contents) != e.keysize:
+				raise ValueError('Wrong key length')
 		self.enctype = enctype
 		self.contents = contents
 

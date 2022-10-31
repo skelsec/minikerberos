@@ -27,7 +27,7 @@ async def amain(args):
 def main():
 	import argparse
 	
-	parser = argparse.ArgumentParser(description='Polls the kerberos service for a TGT for the sepcified user', formatter_class=argparse.RawDescriptionHelpFormatter, epilog = kerberos_url_help_epilog)
+	parser = argparse.ArgumentParser(description='Fetches the NT hash for the user. PKI auth required.', formatter_class=argparse.RawDescriptionHelpFormatter, epilog = kerberos_url_help_epilog)
 	parser.add_argument('kerberos_connection_url', help='The kerberos target URL. Example: "kerberos+pfx://TEST.corp\Administrator:admin@10.10.10.2/?certdata=test.pfx"')
 	parser.add_argument('-v', '--verbose', action='count', default=0)
 	

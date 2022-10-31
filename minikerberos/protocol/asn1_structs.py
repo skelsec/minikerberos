@@ -824,6 +824,15 @@ class KerberosResponse(core.Choice):
 		('TGS_REP', TGS_REP, {'implicit': (APPLICATION,13) }  ),
 		('KRB_ERROR', KRB_ERROR, {'implicit': (APPLICATION,30) } ),
 	]
+
+class KerberosMessage(core.Choice):
+	_alternatives = [
+		('AS_REQ', AS_REQ, {'implicit': (APPLICATION,10) }),
+		('AS_REP', AS_REP, {'implicit': (APPLICATION,11) }),
+		('TGS_REQ', TGS_REQ, {'implicit': (APPLICATION,12) }),
+		('TGS_REP', TGS_REP, {'implicit': (APPLICATION,13) }),
+		('KRB_ERROR', KRB_ERROR, {'implicit': (APPLICATION,30) }),
+	]
 	
 	
 class KRBCRED(core.Sequence):
