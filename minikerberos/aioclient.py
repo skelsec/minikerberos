@@ -419,7 +419,12 @@ class AIOKerberosClient:
 		if override_etype:
 			kdc_req_body['etype'] = override_etype
 		else:
-			kdc_req_body['etype'] = [self.kerberos_cipher_type]
+			if self.kerberos_cipher_type == -128:
+				# we dunno how to do GSS api calls with -128 etype,
+				# but we can request etype 23 here for which all is implemented
+				kdc_req_body['etype'] = [23]
+			else:
+				kdc_req_body['etype'] = [self.kerberos_cipher_type]
 
 		authenticator_data = {}
 		authenticator_data['authenticator-vno'] = krb5_pvno

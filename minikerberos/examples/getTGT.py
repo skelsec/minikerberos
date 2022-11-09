@@ -18,7 +18,7 @@ async def amain(args):
 	
 	client = AIOKerberosClient(ccred, target)
 	await client.get_TGT()
-	client.ccache.to_file(args.ccache)	
+	client.ccache.to_file(args.ccache)
 	logging.info('Done!')
 
 
