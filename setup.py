@@ -48,6 +48,7 @@ setup(
 		'oscrypto>=1.2.1',
 		'asysocks>=0.2.2',
 		'unicrypto>=0.0.9',
+		'tqdm',
 	],
 
 	entry_points={
@@ -63,6 +64,7 @@ setup(
 			'getNTPKInit  = minikerberos.examples.getNT:main',
 			'cve202233647  = minikerberos.examples.CVE_2022_33647:main',
 			'cve202233679  = minikerberos.examples.CVE_2022_33679:main',
+			'kerb23hashdecrypt  = minikerberos.examples.kerb23hashdecrypt:main',
 		],
 	}
 )
