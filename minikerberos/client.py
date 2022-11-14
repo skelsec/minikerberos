@@ -29,7 +29,7 @@ from minikerberos.gssapi.channelbindings import ChannelBindingsStruct
 from asn1crypto import cms
 from asn1crypto import core
 
-class KerbrosClient:
+class KerberosClient:
 	def __init__(self, ccred, target, ccache = None):
 		self.usercreds = ccred
 		self.target = target
@@ -51,7 +51,7 @@ class KerbrosClient:
 		Sets up the kerberos object from tgt and the session key.
 		Use this function when pulling the TGT from ccache file.
 		"""
-		kc = KerbrosClient(None, target)
+		kc = KerberosClient(None, target)
 		kc.kerberos_TGT = tgt
 		
 		kc.kerberos_cipher_type = key['keytype']
