@@ -122,7 +122,7 @@ async def main():
 	target_user = 'asdadfadsf@TEST.corp'
 	target = ku.get_target()
 	print(target)
-	spn = KerberosSPN.from_user_email(target_user)
+	spn = KerberosSPN.from_upn(target_user)
 	ue = KerberosUserEnum(target, spn)
 	res = await ue.run()
 	print(res)
@@ -137,7 +137,7 @@ async def main():
 
 
 	target_user = 'srv_http@TEST.corp'
-	spn = KerberosSPN.from_user_email(target_user)
+	spn = KerberosSPN.from_upn(target_user)
 	url = 'kerberos+pw://TEST\\victim:Passw0rd!1@10.10.10.2/?timeout=77'
 	ku = KerberosClientURL.from_url(url)
 	target = ku.get_target()
@@ -147,7 +147,7 @@ async def main():
 	print(res)
 
 	target_user = 'srv_http@TEST.corp'
-	spn = KerberosSPN.from_user_email(target_user)
+	spn = KerberosSPN.from_upn(target_user)
 	url = 'kerberos+pw://TEST\\victim:Passw0rd!1@10.10.10.2/?proxyhost=10.10.10.102&proxytype=socks5&proxyport=1080'
 	ku = KerberosClientURL.from_url(url)
 	target = ku.get_target()

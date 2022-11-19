@@ -40,10 +40,11 @@ kerberos_url_help_epilog = """==== Extra Help ====
    - KEYTAB file:
       kerberos+keytab://domain\\user:creds.keytab@127.0.0.1
    - PFX file:
-      kerberos+pfx://TEST.corp\Administrator:admin@10.10.10.2/?certdata=test.pfx
+      kerberos+pfx://TEST.corp\\Administrator:admin@10.10.10.2/?certdata=test.pfx
    - PFX string (b64):
-      kerberos+pfxstr://TEST.corp\Administrator:admin@10.10.10.2/?certdata=BASE64DATA
-
+      kerberos+pfxstr://TEST.corp\\Administrator:admin@10.10.10.2/?certdata=BASE64DATA
+   - No auth (preauth not req):
+      kerberos+none://TEST.corp\\asrepuser@10.10.10.2/
 """
 
 
@@ -134,6 +135,8 @@ class KerberosClientURL:
 			res.kerberos_key_des3 = self.secret
 		elif self.secret_type == KerberosSecretType.CCACHE:
 			res.ccache = self.secret
+		elif self.secret_type == KerberosSecretType.NONE:
+			res.nopreauth = True
 		else:
 			raise Exception('Missing/unknown secret_type!')
 
@@ -198,7 +201,7 @@ class KerberosClientURL:
 		
 		if res.username is None:
 			raise Exception('Missing username!')
-		if res.secret is None:
+		if res.secret is None and res.secret_type != KerberosSecretType.NONE:
 			raise Exception('Missing secret/password!')
 		if res.secret_type is None:
 			raise Exception('Missing secret_type!')

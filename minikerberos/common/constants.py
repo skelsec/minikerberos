@@ -18,3 +18,4 @@ class KerberosSecretType(enum.Enum):
 	PFX = 'PFX'
 	PEM = 'PEM'
 	PFXSTR = 'PFXSTR'
+	NONE = 'NONE'

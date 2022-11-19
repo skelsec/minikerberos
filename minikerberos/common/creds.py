@@ -61,6 +61,7 @@ class KerberosCredential:
 		self.dhparams:DirtyDH = None
 		self.ccache:CCACHE = None
 		self.ccache_spn_strict_check:bool = True
+		self.nopreauth = False
 
 	def get_preferred_enctype(self, server_enctypes:List[EncryptionType]) -> EncryptionType:
 		client_enctypes = self.get_supported_enctypes(as_int=False)
@@ -86,7 +87,7 @@ class KerberosCredential:
 			if self.password is not None:
 				if not salt:
 					salt = (self.domain.upper() + self.username).encode()
-				return string_to_key(Enctype.AES256, self.password.encode(), salt).contents
+				return string_to_key(Enctype.AES256, self.password, salt).contents
 			raise Exception('There is no key for AES256 encryption')
 		elif etype == EncryptionType.AES128_CTS_HMAC_SHA1_96:
 			if self.kerberos_key_aes_128:
@@ -94,7 +95,7 @@ class KerberosCredential:
 			if self.password is not None:
 				if not salt:
 					salt = (self.domain.upper() + self.username).encode()
-				return string_to_key(Enctype.AES128, self.password.encode(), salt).contents
+				return string_to_key(Enctype.AES128, self.password, salt).contents
 			raise Exception('There is no key for AES128 encryption')
 		elif etype == EncryptionType.ARCFOUR_HMAC_MD5:
 			if self.kerberos_key_rc4:
@@ -102,7 +103,9 @@ class KerberosCredential:
 			if self.nt_hash:
 				return bytes.fromhex(self.nt_hash)
 			elif self.password:
-				self.nt_hash = hashlib.md4(self.password.encode('utf-16-le')).hexdigest().upper()
+				if isinstance(self.password, str):
+					pw = self.password.encode('utf-16-le')
+				self.nt_hash = hashlib.md4(pw).hexdigest().upper()
 				return bytes.fromhex(self.nt_hash)
 			else:
 				raise Exception('There is no key for RC4 encryption')
@@ -112,7 +115,7 @@ class KerberosCredential:
 			elif self.password:
 				if not salt:
 					salt = (self.domain.upper() + self.username).encode()
-				return string_to_key(Enctype.DES3, self.password.encode(), salt).contents
+				return string_to_key(Enctype.DES3, self.password, salt).contents
 			else:
 				raise Exception('There is no key for DES3 encryption')
 
@@ -122,7 +125,7 @@ class KerberosCredential:
 			elif self.password:
 				if not salt:
 					salt = (self.domain.upper() + self.username).encode()
-				return string_to_key(Enctype.DES_MD5, self.password.encode(), salt).contents
+				return string_to_key(Enctype.DES_MD5, self.password, salt).contents
 			else:
 				raise Exception('There is no key for DES3 encryption')
 		
@@ -132,7 +135,10 @@ class KerberosCredential:
 			if self.nt_hash:
 				return bytes.fromhex(self.nt_hash)[:8]
 			elif self.password:
-				self.nt_hash = hashlib.md4(self.password.encode('utf-16-le')).hexdigest().upper()
+				pw = self.password
+				if isinstance(self.password, str):
+					pw = self.password.encode('utf-16-le')
+				self.nt_hash = hashlib.md4(pw).hexdigest().upper()
 				return bytes.fromhex(self.nt_hash)[:8]
 			else:
 				raise Exception('There is no key for RC4 encryption')
@@ -145,6 +151,16 @@ class KerberosCredential:
 		Returns a list of all EncryptionTypes this credentials can use for authentication
 		"""
 		supp_enctypes = collections.OrderedDict()
+		if self.nopreauth is True:
+			supp_enctypes[EncryptionType.DES_CBC_CRC] = 1
+			supp_enctypes[EncryptionType.DES_CBC_MD4] = 1
+			supp_enctypes[EncryptionType.DES_CBC_MD5] = 1
+			supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
+			supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
+			supp_enctypes[EncryptionType.ARCFOUR_MD4] = 1
+			supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
+			supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
+
 		if self.kerberos_key_aes_256:
 			supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
 		if self.kerberos_key_aes_128:

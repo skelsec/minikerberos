@@ -53,18 +53,19 @@ setup(
 
 	entry_points={
 		'console_scripts': [
-			'ccacheedit = minikerberos.examples.ccache_editor:main',
-			'kirbi2ccache = minikerberos.examples.kirbi2ccache:main',
-			'ccache2kirbi = minikerberos.examples.ccache2kirbi:main',
-			'ccacheroast = minikerberos.examples.ccacheroast:main',
-			'getTGT = minikerberos.examples.getTGT:main',
-			'getTGS = minikerberos.examples.getTGS:main',
-			'getS4U2proxy = minikerberos.examples.getS4U2proxy:main',
-			'getS4U2self  = minikerberos.examples.getS4U2self:main',
-			'getNTPKInit  = minikerberos.examples.getNT:main',
-			'cve202233647  = minikerberos.examples.CVE_2022_33647:main',
-			'cve202233679  = minikerberos.examples.CVE_2022_33679:main',
-			'kerb23hashdecrypt  = minikerberos.examples.kerb23hashdecrypt:main',
+			'minikerberos-ccacheedit   = minikerberos.examples.ccache_editor:main',
+			'minikerberos-kirbi2ccache = minikerberos.examples.kirbi2ccache:main',
+			'minikerberos-ccache2kirbi = minikerberos.examples.ccache2kirbi:main',
+			'minikerberos-ccacheroast  = minikerberos.examples.ccacheroast:main',
+			'minikerberos-getTGT       = minikerberos.examples.getTGT:main',
+			'minikerberos-getTGS       = minikerberos.examples.getTGS:main',
+			'minikerberos-getS4U2proxy = minikerberos.examples.getS4U2proxy:main',
+			'minikerberos-getS4U2self  = minikerberos.examples.getS4U2self:main',
+			'minikerberos-getNTPKInit  = minikerberos.examples.getNT:main',
+			'minikerberos-cve202233647 = minikerberos.examples.CVE_2022_33647:main',
+			'minikerberos-cve202233679 = minikerberos.examples.CVE_2022_33679:main',
+			'minikerberos-kerb23hashdecrypt = minikerberos.examples.kerb23hashdecrypt:main',
+			'minikerberos-kerberoast   = minikerberos.examples.spnroast:main',
 		],
 	}
 )

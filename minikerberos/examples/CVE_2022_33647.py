@@ -262,7 +262,7 @@ class KerberosProxy:
 				client.kerberos_cipher_type = -128
 				client.kerberos_session_key = Key(-128, keyguess)
 				try:
-					await client.get_TGS(KerberosSPN.from_user_email('krbtgt@test.corp'))
+					await client.get_TGS(KerberosSPN.from_upn('krbtgt@test.corp'))
 				except Exception as e:
 					continue
 				else:

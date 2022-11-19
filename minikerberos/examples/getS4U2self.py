@@ -18,7 +18,7 @@ async def amain(args):
 	target = cu.get_target()
 
 	service_spn = KerberosSPN.from_target_string(args.spn)
-	target_user = KerberosSPN.from_user_email(args.targetuser)
+	target_user = KerberosSPN.from_upn(args.targetuser)
 	
 	if not ccred.ccache:
 		logger.debug('Getting TGT')

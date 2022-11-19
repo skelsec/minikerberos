@@ -705,6 +705,8 @@ def random_to_key(enctype, seed):
 
 
 def string_to_key(enctype, string, salt, params=None):
+	if isinstance(string, str):
+		string = string.encode()
 	e = _get_enctype_profile(enctype)
 	return e.string_to_key(string, salt, params)
 

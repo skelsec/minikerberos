@@ -14,6 +14,7 @@ from typing import List
 
 from minikerberos import logger
 from minikerberos.common.ccache import CCACHE
+from minikerberos.common.spn import KerberosSPN
 from minikerberos.protocol.asn1_structs import METHOD_DATA, ETYPE_INFO, ETYPE_INFO2, \
 	PADATA_TYPE, PA_PAC_REQUEST, PA_ENC_TS_ENC, EncryptedData, krb5_pvno, KDC_REQ_BODY, \
 	AS_REQ, TGS_REP, KDCOptions, PrincipalName, EncASRepPart, EncTGSRepPart, PrincipalName, Realm, \
@@ -75,19 +76,19 @@ class AIOKerberosClient:
 		padatas.append(pa_data_1)
 		
 		logger.debug('Selecting common encryption type: %s' % supported_encryption_method.name)
-		if enctimestamp is None:
-			now = datetime.datetime.now(datetime.timezone.utc)
-			#creating timestamp asn1
-			timestamp = PA_ENC_TS_ENC({'patimestamp': now.replace(microsecond=0), 'pausec': now.microsecond}).dump()
-			self.kerberos_cipher = _enctype_table[supported_encryption_method.value]
-			self.kerberos_cipher_type = supported_encryption_method.value
-			self.kerberos_key = Key(self.kerberos_cipher.enctype, self.usercreds.get_key_for_enctype(supported_encryption_method, salt = self.server_salt))
-			enc_timestamp = self.kerberos_cipher.encrypt(self.kerberos_key, 1, timestamp, None)
-		else:
-			now = newnow
-			enc_timestamp = enctimestamp
-		
+		now = datetime.datetime.now(datetime.timezone.utc)
 		if no_preauth is False:
+			if enctimestamp is None:
+				#creating timestamp asn1
+				timestamp = PA_ENC_TS_ENC({'patimestamp': now.replace(microsecond=0), 'pausec': now.microsecond}).dump()
+				self.kerberos_cipher = _enctype_table[supported_encryption_method.value]
+				self.kerberos_cipher_type = supported_encryption_method.value
+				self.kerberos_key = Key(self.kerberos_cipher.enctype, self.usercreds.get_key_for_enctype(supported_encryption_method, salt = self.server_salt))
+				enc_timestamp = self.kerberos_cipher.encrypt(self.kerberos_key, 1, timestamp, None)
+			else:
+				now = newnow
+				enc_timestamp = enctimestamp
+			
 			pa_data_2 = {}
 			pa_data_2['padata-type'] = int(PADATA_TYPE('ENC-TIMESTAMP'))
 			pa_data_2['padata-value'] = EncryptedData({'etype': supported_encryption_method.value, 'cipher': enc_timestamp}).dump()
@@ -261,7 +262,7 @@ class AIOKerberosClient:
 		return preferred_enc_type
 
 
-	async def get_TGT(self, override_etype = None, decrypt_tgt = True, kdcopts = ['forwardable','renewable','proxiable']):
+	async def get_TGT(self, override_etype = None, decrypt_tgt = True, kdcopts = ['forwardable','renewable','proxiable'], override_sname:KerberosSPN = None):
 		"""
 		decrypt_tgt: used for asreproast attacks
 		Steps performed:
@@ -281,7 +282,11 @@ class AIOKerberosClient:
 		kdc_req_body['kdc-options'] = KDCOptions(set(kdcopts))
 		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
 		kdc_req_body['realm'] = self.usercreds.domain.upper()
-		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
+		if override_sname is None:
+			kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
+		else:
+			# if we want to directly kerberoast with no-preauth user
+			kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': override_sname.get_principalname()})
 		kdc_req_body['till']  = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['rtime'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['nonce'] = secrets.randbits(31)
@@ -312,7 +317,7 @@ class AIOKerberosClient:
 
 			#if we want to roast the asrep (tgt rep) part then we dont even have the proper keys to decrypt
 			#so we just return, the asrep can be extracted from this object anyhow
-			if decrypt_tgt == False:
+			if decrypt_tgt == False or self.usercreds.nopreauth is True:
 				return rep
 
 			self.kerberos_cipher = _enctype_table[rep['enc-part']['etype']]
@@ -360,7 +365,7 @@ class AIOKerberosClient:
 			
 			return 
 
-	def tgs_from_ccache(self, spn_user, override_etype):
+	def tgs_from_ccache(self, spn_user:KerberosSPN, override_etype):
 		try:
 			if self.ccache is None:
 				raise Exception('No CCACHE file found')
@@ -386,7 +391,7 @@ class AIOKerberosClient:
 		except Exception as e:
 			return None, None, None, e
 
-	async def get_TGS(self, spn_user, override_etype = None, is_linux = False):
+	async def get_TGS(self, spn_user:KerberosSPN, override_etype = None, is_linux = False):
 		"""
 		Requests a TGS ticket for the specified user.
 		Retruns the TGS ticket, end the decrpyted encTGSRepPart.
