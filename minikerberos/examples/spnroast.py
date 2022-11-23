@@ -57,7 +57,7 @@ async def amain():
 	import argparse
 	
 	parser = argparse.ArgumentParser(description='Kerberoast', formatter_class=argparse.RawDescriptionHelpFormatter, epilog = kerberos_url_help_epilog)
-	parser.add_argument('kerberos_connection_url', help='the kerberos target string in the following format kerberos+none://<domain>\\<username>@<domaincontroller-ip>')
+	parser.add_argument('kerberos_connection_url', help='the kerberos target string in the following format kerberos+<stype>://<domain>\\<username>@<domaincontroller-ip>')
 	parser.add_argument('spn', help='the service principal in format <username>@<FQDN> Example: srv_db@TEST.corp for a TGS ticket to be used for file access on server "fileserver"')
 	parser.add_argument('-r', '--realm', help='Realm. Use this if you specify username in "spn" field')
 	parser.add_argument('-o', '--out-file', help='Write results to this file instead of printing them')
