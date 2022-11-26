@@ -90,7 +90,7 @@ class AIOKerberosClient:
 		
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(kdcopts))
-		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
+		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': self.usercreds.username.split('/')})
 		kdc_req_body['realm'] = self.usercreds.domain.upper()
 		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
 		kdc_req_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
@@ -117,7 +117,7 @@ class AIOKerberosClient:
 
 		kdc_req_body_data = {}
 		kdc_req_body_data['kdc-options'] = KDCOptions(set(kdcopts))
-		kdc_req_body_data['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
+		kdc_req_body_data['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': self.usercreds.username.split('/')})
 		kdc_req_body_data['realm'] = self.usercreds.domain.upper()
 		kdc_req_body_data['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
 		kdc_req_body_data['till']  = (now + datetime.timedelta(days=1)).replace(microsecond=0)
@@ -199,7 +199,7 @@ class AIOKerberosClient:
 			for tgt, keystruct in self.ccache.get_all_tgt():
 				if self.usercreds.ccache_spn_strict_check is True:
 					our_user = str(self.usercreds.username) + '@' + self.usercreds.domain
-					ticket_for = tgt['cname']['name-string'][0] + '@' + tgt['crealm']
+					ticket_for = '/'.join(tgt['cname']['name-string']) + '@' + tgt['crealm']
 					if ticket_for.upper() == our_user.upper():
 						logger.debug('Found TGT for user %s' % our_user)
 						self.kerberos_TGT = tgt
@@ -270,7 +270,7 @@ class AIOKerberosClient:
 		now = datetime.datetime.now(datetime.timezone.utc)
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(kdcopts))
-		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
+		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': self.usercreds.username.split('/')})
 		kdc_req_body['realm'] = self.usercreds.domain.upper()
 		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
 		kdc_req_body['till']  = (now + datetime.timedelta(days=1)).replace(microsecond=0)
@@ -499,7 +499,7 @@ class AIOKerberosClient:
 		
 		krb_tgs_body = {}
 		krb_tgs_body['kdc-options'] = KDCOptions(set(kdcopts))
-		krb_tgs_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
+		krb_tgs_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': self.usercreds.username.split('/')})
 		krb_tgs_body['realm'] = self.usercreds.domain.upper()
 		krb_tgs_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		krb_tgs_body['nonce'] = secrets.randbits(31)
@@ -607,7 +607,6 @@ class AIOKerberosClient:
 		pa_for_user['padata-value'] = PA_FOR_USER_ENC(pa_for_user_enc).dump()
 	
 		###### Constructing body
-		spn_user = [self.usercreds.username]
 		if spn_user is not None:
 			if isinstance(spn_user, str):
 				spn_user = [spn_user]
@@ -615,6 +614,8 @@ class AIOKerberosClient:
 				spn_user = spn_user
 			else:
 				spn_user = spn_user.get_principalname()
+		else:
+			spn_user = self.usercreds.username.split('/')
 
 		
 		krb_tgs_body = {}
