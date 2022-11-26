@@ -208,7 +208,7 @@ class KerberosCredential:
 		return KerberosCredential.from_kirbi(keytab_file_path, principal, realm)
 	
 	@staticmethod
-	def from_keytab_string(keytabdata: str | bytes, principal: str, realm: str) -> KerberosCredential:
+	def from_keytab_string(self, keytabdata: str|bytes, principal: str, realm: str) -> KerberosCredential:
 		cred = KerberosCredential()
 		cred.username = principal
 		cred.domain = realm
@@ -220,25 +220,25 @@ class KerberosCredential:
 
 		for keytab_entry in keytab.entries:
 			if realm == keytab_entry.principal.realm.to_string():
-				keytab_principal = '/'.join(list(map(lambda c: c.to_string(), keytab_entry.principal.components)))
-				if principal == keytab_principal:
-					enctype = None
-					if Enctype.AES256 == keytab_entry.enctype:
-						enctype = KerberosSecretType.AES256
-					elif Enctype.AES128 == keytab_entry.enctype:
-						enctype = KerberosSecretType.AES128
-					elif Enctype.DES3 == keytab_entry.enctype:
-						enctype = KerberosSecretType.DES3
-					elif Enctype.DES_CRC == keytab_entry.enctype:
-						enctype = KerberosSecretType.DES
-					elif Enctype.DES_MD4 == keytab_entry.enctype:
-						enctype = KerberosSecretType.DES
-					elif Enctype.DES_MD5 == keytab_entry.enctype:
-						enctype = KerberosSecretType.DES
-					elif Enctype.RC4 == keytab_entry.enctype:
-						enctype = KerberosSecretType.RC4
-					if enctype:
-						cred.add_secret(enctype, keytab_entry.key_contents.hex())
+				for keytab_principal in keytab_entry.principal.components:
+					if principal == keytab_principal.to_string():
+						enctype = None
+						if Enctype.AES256 == keytab_entry.enctype:
+							enctype = KerberosSecretType.AES256
+						elif Enctype.AES128 == keytab_entry.enctype:
+							enctype = KerberosSecretType.AES128
+						elif Enctype.DES3 == keytab_entry.enctype:
+							enctype = KerberosSecretType.DES3
+						elif Enctype.DES_CRC == keytab_entry.enctype:
+							enctype = KerberosSecretType.DES
+						elif Enctype.DES_MD4 == keytab_entry.enctype:
+							enctype = KerberosSecretType.DES
+						elif Enctype.DES_MD5 == keytab_entry.enctype:
+							enctype = KerberosSecretType.DES
+						elif Enctype.RC4 == keytab_entry.enctype:
+							enctype = KerberosSecretType.RC4
+						if enctype:
+							cred.add_secret(enctype, keytab_entry.key_contents.hex())
 		
 		return cred
 
