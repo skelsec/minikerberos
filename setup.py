@@ -47,7 +47,7 @@ setup(
 		'asn1crypto>=1.3.0',
 		'oscrypto>=1.2.1',
 		'asysocks>=0.2.2',
-		'unicrypto>=0.0.9',
+		'unicrypto>=0.0.10',
 		'tqdm',
 	],
 
