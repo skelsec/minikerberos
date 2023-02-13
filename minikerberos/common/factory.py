@@ -5,11 +5,14 @@ import copy
 from minikerberos.common.target import KerberosTarget
 from minikerberos.common.creds import KerberosCredential
 from minikerberos.common.constants import KerberosSecretType
+from minikerberos.aioclient import AIOKerberosClient
+from minikerberos.client import KerbrosClient
 
 from urllib.parse import urlparse, parse_qs
 
 from asysocks.unicomm.common.target import UniProto
-from asysocks.unicomm.common.proxy import UniProxyTarget 
+from asysocks.unicomm.common.proxy import UniProxyTarget
+from minikerberos.protocol.constants import EncryptionType
 
 kerberos_url_help_epilog = """==== Extra Help ====
    kerberos connection url secret types: 
@@ -48,18 +51,24 @@ kerberos_url_help_epilog = """==== Extra Help ====
 """
 
 
-kerberosclienturl_param2var = {
+KerberosClientFactory_param2var = {
 	'timeout': ('timeout', [int]),
 	'certdata': ('certdata', [str]),
+	'keydata': ('keydata', [str]),
+	'etype': ('etype', [int]),
+	'certstore': ('certstore', [str]),
+	'cn': ('commonname', [str]),
 }
 
-class KerberosClientURL:
-	def __init__(self, target:KerberosTarget = None, credential = None, proxies = [], certdata = None):
+class KerberosClientFactory:
+	def __init__(self, target:KerberosTarget = None, credential = None, proxies = [], certdata = None, keydata = None):
 		self.domain = None
 		self.username = None
 		self.secret_type = None
 		self.secret = None
-
+		self.etype = None
+		self.certstore = 'MY'
+		self.commonname = None
 
 		self.dc_ip = None
 		self.protocol = UniProto.CLIENT_TCP
@@ -70,6 +79,7 @@ class KerberosClientURL:
 		self.credential = credential
 		self.proxies = proxies
 		self.certdata = certdata
+		self.keydata = keydata
 
 	def get_target(self):
 		if self.target is not None:
@@ -97,6 +107,12 @@ class KerberosClientURL:
 			return KerberosCredential.from_pfx_string(self.certdata, self.secret)
 		if self.secret_type == KerberosSecretType.PFX:
 			return KerberosCredential.from_pfx_file(self.certdata, self.secret, username=self.username, domain=self.domain)
+		if self.secret_type == KerberosSecretType.CCACHE:
+			return KerberosCredential.from_ccache(self.secret, principal=self.username, realm=self.domain)
+		if self.secret_type == KerberosSecretType.PEM:
+			return KerberosCredential.from_pem_file(self.certdata, self.keydata)
+		if self.secret_type == KerberosSecretType.CERTSTORE:
+			return KerberosCredential.from_windows_certstore(self.commonname, certstore_name = self.certstore, dhparams = None, username = self.username, domain = self.domain)
 
 		res = KerberosCredential()
 		res.username = self.username
@@ -133,18 +149,31 @@ class KerberosClientURL:
 			if len(self.secret) != 24:
 				raise Exception('Incorrect DES3 key! %s' % self.secret)
 			res.kerberos_key_des3 = self.secret
-		elif self.secret_type == KerberosSecretType.CCACHE:
-			res.ccache = self.secret
 		elif self.secret_type == KerberosSecretType.NONE:
 			res.nopreauth = True
 		else:
 			raise Exception('Missing/unknown secret_type!')
 
+		if self.etype is not None:
+			res.override_etypes = [EncryptionType(self.etype)]
+
 		return res
+	
+	def get_client(self):
+		return AIOKerberosClient(self.get_creds(), self.get_target())
+	
+	def get_client_blocking(self):
+		return KerbrosClient(self.get_creds(), self.get_target())
+	
+	def get_client_newcred(self, cred:KerberosCredential):
+		return AIOKerberosClient(copy.deepcopy(cred), self.get_target())
+	
+	def get_client_newcred_blocking(self, cred:KerberosCredential):
+		return KerbrosClient(copy.deepcopy(cred), self.get_target())
 
 	@staticmethod
 	def from_url(url_str):
-		res = KerberosClientURL()
+		res = KerberosClientFactory()
 		url = urlparse(url_str)
 
 		res.dc_ip = url.hostname
@@ -171,7 +200,8 @@ class KerberosClientURL:
 			else:
 				raise Exception('Domain missing from username!')
 		else:
-			raise Exception('Missing username!')
+			if res.secret_type != KerberosSecretType.CERTSTORE:
+				raise Exception('Missing username!')
 		
 		if res.secret is None:
 			res.secret = url.password
@@ -185,14 +215,14 @@ class KerberosClientURL:
 				proxy_type = query[k][0]
 
 			
-			if k in kerberosclienturl_param2var:
+			if k in KerberosClientFactory_param2var:
 				data = query[k][0]
-				for c in kerberosclienturl_param2var[k][1]:
+				for c in KerberosClientFactory_param2var[k][1]:
 					data = c(data)
 
 					setattr(
 						res, 
-						kerberosclienturl_param2var[k][0], 
+						KerberosClientFactory_param2var[k][0], 
 						data
 					)
 		
@@ -200,45 +230,20 @@ class KerberosClientURL:
 			res.proxies = UniProxyTarget.from_url_params(url_str, res.port)
 		
 		if res.username is None:
-			raise Exception('Missing username!')
-		if res.secret is None and res.secret_type != KerberosSecretType.NONE:
-			raise Exception('Missing secret/password!')
+			if res.secret_type != KerberosSecretType.CERTSTORE:
+				raise Exception('Missing username!')
+		
+		if res.secret_type == KerberosSecretType.PWPROMPT:
+			res.secret_type = KerberosSecretType.PASSWORD
+			res.secret = getpass.getpass()
+
 		if res.secret_type is None:
 			raise Exception('Missing secret_type!')
 		if res.dc_ip is None:
-			raise Exception('Missing target hostname!')
+			raise Exception('Missing target hostname or IP!')
+		
+		if res.secret is None and res.secret_type != KerberosSecretType.NONE:
+			if res.secret_type not in [KerberosSecretType.PEM, KerberosSecretType.CERTSTORE]:
+				raise Exception('Missing secret/password!')
 		
 		return res
-
-if __name__ == '__main__':
-	urls = [
-		'kerberos+password://domain\\user:pass@word34tnk;adfs@127.0.0.1',
-		'kerberos+aes://domain\\user:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@dc_ip',
-		'kerberos+aes256://domain\\user:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@dc_ip',
-		'kerberos+aes128://domain\\user:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@dc_ip',
-		'kerberos+aes128://domain\\user:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@dc_ip',
-		'kerberos+rc4://domain\\user:password@dc_ip',
-		'kerberos+rc4://domain\\user:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@dc_ip',
-		'kerberos+nt://domain\\user:password@dc_ip',
-		'kerberos+nt://domain\\user:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@dc_ip',
-		'kerberos+des://domain\\user:password@dc_ip',
-		'kerberos+des://domain\\user:AAAAAAAAAAAAAAAA@dc_ip',
-		'kerberos+password://domain\\user:password34tnk;adfs%40#@dc_ip',
-		'kerberos+ccache://domain\\user:password@dc_ip',
-		'kerberos+keytab://domain\\user:password@dc_ip',
-		'kerberos+aes://domain\\user:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@dc_ip/?timeout=99',
-		'kerberos+aes://domain\\user:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@dc_ip/?timeout=77&proxyhost=127.0.0.1&proxytype=socks5',
-	]
-	for url in urls:
-		try:
-			print(url)
-			cu = KerberosClientURL.from_url(url)
-			target = cu.get_target()
-			creds = cu.get_creds()
-			print(target)
-			print(creds)
-			input()
-		except Exception as e:
-			print(e)
-			input()
-	

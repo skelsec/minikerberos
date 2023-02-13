@@ -3,6 +3,7 @@ import enum
 class KerberosSecretType(enum.Enum):
 	PASSWORD = 'PASSWORD'
 	PW = 'PW'
+	PWPROMPT = 'PWPROMPT'
 	PASS = 'PASS'
 	NT = 'NT'
 	AES = 'AES' #keeping this here for user's secret-type specification and compatibility reasons
@@ -19,3 +20,4 @@ class KerberosSecretType(enum.Enum):
 	PEM = 'PEM'
 	PFXSTR = 'PFXSTR'
 	NONE = 'NONE'
+	CERTSTORE = 'CERTSTORE'

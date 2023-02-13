@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-#
-# Author:
-#  Tamas Jos (@skelsec)
-#
 import os
 import logging
 from minikerberos.common.ccache import CCACHE

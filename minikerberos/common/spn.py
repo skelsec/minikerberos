@@ -46,11 +46,6 @@ class KerberosSPN:
 		if override_realm is not None:
 			kt.domain = override_realm
 		return kt
-	
-	@staticmethod
-	def from_target_string(s:str, override_realm:str = None):
-		#please dont use this anymore
-		return KerberosSPN.from_spn(s, override_realm)
 
 	def get_principalname(self):
 		if self.service:

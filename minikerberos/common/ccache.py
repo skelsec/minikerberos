@@ -1,14 +1,9 @@
-#!/usr/bin/env python3
-#
-# Author:
-#  Tamas Jos (@skelsec)
-#
-
 import os
 import io
 import datetime
 import glob
 import base64
+from typing import List
 
 from minikerberos.protocol.asn1_structs import Ticket, EncryptedData, \
 	krb5_pvno, KrbCredInfo, EncryptionKey, KRBCRED, TicketFlags, EncKrbCredPart
@@ -17,15 +12,17 @@ from minikerberos.protocol.constants import EncryptionType, MESSAGE_TYPE
 from minikerberos import logger
 from asn1crypto import core
 from unicrypto import hashlib
+from minikerberos.common.kirbi import Kirbi
+from minikerberos.common.spn import KerberosSPN
 
 
 
 # http://repo.or.cz/w/krb5dissect.git/blob_plain/HEAD:/ccache.txt
 class Header:
 	def __init__(self):
-		self.tag = None
-		self.taglen = None
-		self.tagdata = None
+		self.tag:int = None
+		self.taglen:int = None
+		self.tagdata:bytes = None
 		
 	@staticmethod
 	def parse(data):
@@ -47,6 +44,10 @@ class Header:
 		t += len(self.tagdata).to_bytes(2, byteorder='big', signed=False)
 		t += self.tagdata
 		return t
+	
+	@staticmethod
+	def from_bytes(data:bytes):
+		return Header.parse(data)
 		
 	def __str__(self):
 		t = 'tag: %s\n' % self.tag
@@ -56,11 +57,11 @@ class Header:
 
 class DateTime:
 	def __init__(self):
-		self.time_offset = None
-		self.usec_offset = None
+		self.time_offset:int = None
+		self.usec_offset:int = None
 	
 	@staticmethod
-	def parse(reader):
+	def parse(reader:io.BytesIO):
 		d = DateTime()
 		d.time_offset = int.from_bytes(reader.read(4), byteorder='big', signed=False)
 		d.usec_offset = int.from_bytes(reader.read(4), byteorder='big', signed=False)
@@ -70,6 +71,10 @@ class DateTime:
 		t =  self.time_offset.to_bytes(4, byteorder='big', signed=False)
 		t += self.usec_offset.to_bytes(4, byteorder='big', signed=False)
 		return t
+
+	@staticmethod
+	def from_bytes(data:bytes):
+		return DateTime.parse(io.BytesIO(data))
 		
 
 		
@@ -168,11 +173,40 @@ class Credential:
 		krbcred['msg-type'] = MESSAGE_TYPE.KRB_CRED.value
 		krbcred['tickets'] = [Ticket.load(self.ticket.to_asn1())]
 		krbcred['enc-part'] = EncryptedData({'etype': EncryptionType.NULL.value, 'cipher': EncKrbCredPart(enc_krbcred).dump()})
-	
-	
-	
-		kirbi = KRBCRED(krbcred)
+
+		kirbi = Kirbi(KRBCRED(krbcred))
 		return kirbi, filename
+	
+	@staticmethod
+	def from_kirbi(kirbi:Kirbi):
+		krbcred = kirbi.kirbiobj.native
+		c = Credential()
+		enc_credinfo = EncKrbCredPart.load(krbcred['enc-part']['cipher']).native
+		ticket_info = enc_credinfo['ticket-info'][0]
+		
+		c.client = CCACHEPrincipal.from_asn1(ticket_info['pname'], ticket_info['prealm'])
+		#yaaaaay 4 additional weirdness!!!!
+		#if sname name-string contains a realm as well htne impacket will crash miserably :(
+		if len(ticket_info['sname']['name-string']) > 2 and ticket_info['sname']['name-string'][-1].upper() == ticket_info['srealm'].upper():
+			logger.debug('SNAME contains the realm as well, trimming it')
+			t = ticket_info['sname']
+			t['name-string'] = t['name-string'][:-1]
+			c.server = CCACHEPrincipal.from_asn1(t, ticket_info['srealm'])
+		else:
+			c.server = CCACHEPrincipal.from_asn1(ticket_info['sname'], ticket_info['srealm'])
+		
+		
+		c.time = Times.from_asn1(ticket_info)
+		c.key = Keyblock.from_asn1(ticket_info['key'])
+		c.is_skey = 0 #not sure!
+		
+		c.tktflags = TicketFlags(ticket_info['flags']).cast(core.IntegerBitString).native
+		c.num_address = 0
+		c.num_authdata = 0
+		c.ticket = CCACHEOctetString.from_asn1(Ticket(krbcred['tickets'][0]).dump()) #kirbi only stores one ticket per file
+		c.second_ticket = CCACHEOctetString.empty()
+		
+		return c
 
 	@staticmethod
 	def from_asn1(ticket, data):
@@ -327,11 +361,15 @@ class Times:
 		t += self.endtime.to_bytes(4, byteorder='big', signed=False)
 		t += self.renew_till.to_bytes(4, byteorder='big', signed=False)
 		return t
+
+	@staticmethod
+	def from_bytes(data:bytes):
+		return Times.parse(io.BytesIO(data))
 		
 class Address:
 	def __init__(self):
-		self.addrtype = None
-		self.addrdata = None
+		self.addrtype:int = None
+		self.addrdata:CCACHEOctetString = None
 	
 	@staticmethod
 	def parse(reader):
@@ -344,14 +382,17 @@ class Address:
 		t = self.addrtype.to_bytes(2, byteorder='big', signed=False)
 		t += self.addrdata.to_bytes()
 		return t
+	
+	def from_bytes(data:bytes):
+		return Address.parse(io.BytesIO(data))
 		
 class Authdata:
 	def __init__(self):
-		self.authtype = None
-		self.authdata = None
+		self.authtype:int = None
+		self.authdata:CCACHEOctetString = None
 	
 	@staticmethod
-	def parse(reader):
+	def parse(reader:io.BytesIO):
 		a = Authdata()
 		a.authtype = int.from_bytes(reader.read(2), byteorder='big', signed=False)
 		a.authdata = CCACHEOctetString.parse(reader)
@@ -361,13 +402,16 @@ class Authdata:
 		t = self.authtype.to_bytes(2, byteorder='big', signed=False)
 		t += self.authdata.to_bytes()
 		return t
+
+	def from_bytes(data:bytes):
+		return Authdata.parse(io.BytesIO(data))
 		
 class CCACHEPrincipal:
 	def __init__(self):
-		self.name_type = None
-		self.num_components = None
-		self.realm = None
-		self.components = []
+		self.name_type:int = None
+		self.num_components:int = None
+		self.realm:CCACHEOctetString = None
+		self.components:List[CCACHEOctetString] = []
 	
 	@staticmethod
 	def from_asn1(principal, realm):
@@ -381,7 +425,7 @@ class CCACHEPrincipal:
 		return p
 	
 	@staticmethod
-	def dummy():
+	def empty():
 		p = CCACHEPrincipal()
 		p.name_type = 1
 		p.num_components = 1
@@ -418,11 +462,17 @@ class CCACHEPrincipal:
 		for com in self.components:
 			t += com.to_bytes()
 		return t
+	
+	def __str__(self):
+		t = self.realm.to_string() + '/'
+		t += '/'.join([c.to_string() for c in self.components])
+		return t
+	
 		
 class CCACHEOctetString:
 	def __init__(self):
-		self.length = None
-		self.data = None
+		self.length:int = None
+		self.data:bytes = None
 	
 	@staticmethod
 	def empty():
@@ -468,6 +518,11 @@ class CCACHEOctetString:
 		t = len(self.data).to_bytes(4, byteorder='big', signed=False)
 		t += self.data
 		return t
+
+	def __eq__(self, __o: object) -> bool:
+		if isinstance(__o, CCACHEOctetString):
+			return self.to_bytes() == __o.to_bytes()
+		return False
 		
 		
 class CCACHE:
@@ -478,27 +533,20 @@ class CCACHE:
 		self.file_format_version = None #0x0504
 		self.headers = []
 		self.primary_principal = None
-		self.credentials = []
+		self.credentials:List[Credential] = []
 		
 		if empty == False:
 			self.__setup()
 		
 	def __setup(self):
 		self.file_format_version = 0x0504
-		
 		header = Header()
 		header.tag = 1
 		header.taglen = 8
-		#header.tagdata = b'\xff\xff\xff\xff\x00\x00\x00\x00'
 		header.tagdata = b'\x00\x00\x00\x00\x00\x00\x00\x00'
 		self.headers.append(header)
 		
-		#t_hdr = b''
-		#for header in self.headers:
-		#	t_hdr += header.to_bytes()
-		#self.headerlen = 1 #size of the entire header in bytes, encoded in 2 byte big-endian unsigned int
-		
-		self.primary_principal = CCACHEPrincipal.dummy()
+		self.primary_principal = CCACHEPrincipal.empty()
 		
 	def __str__(self):
 		t = '== CCACHE ==\n'
@@ -561,53 +609,23 @@ class CCACHE:
 		self.credentials.append(c)
 	
 		
-	def add_kirbi(self, krbcred, override_pp = True, include_expired = False):
-		c = Credential()
-		enc_credinfo = EncKrbCredPart.load(krbcred['enc-part']['cipher']).native
-		ticket_info = enc_credinfo['ticket-info'][0]
-		
-		"""
-		if ticket_info['endtime'] < datetime.datetime.now(datetime.timezone.utc):
-			if include_expired == True:
-				logging.debug('This ticket has most likely expired, but include_expired is forcing me to add it to cache! This can cause problems!')
-			else:
-				logging.debug('This ticket has most likely expired, skipping')
-				return
-		"""
-		
-		c.client = CCACHEPrincipal.from_asn1(ticket_info['pname'], ticket_info['prealm'])
+	def add_kirbi(self, kirbi:Kirbi, override_pp = True):
+		c = Credential.from_kirbi(kirbi)
 		if override_pp == True:
-			self.primary_principal = c.client
-		
-		#yaaaaay 4 additional weirdness!!!!
-		#if sname name-string contains a realm as well htne impacket will crash miserably :(
-		if len(ticket_info['sname']['name-string']) > 2 and ticket_info['sname']['name-string'][-1].upper() == ticket_info['srealm'].upper():
-			logger.debug('SNAME contains the realm as well, trimming it')
-			t = ticket_info['sname']
-			t['name-string'] = t['name-string'][:-1]
-			c.server = CCACHEPrincipal.from_asn1(t, ticket_info['srealm'])
-		else:
-			c.server = CCACHEPrincipal.from_asn1(ticket_info['sname'], ticket_info['srealm'])
-		
-		
-		c.time = Times.from_asn1(ticket_info)
-		c.key = Keyblock.from_asn1(ticket_info['key'])
-		c.is_skey = 0 #not sure!
-		
-		c.tktflags = TicketFlags(ticket_info['flags']).cast(core.IntegerBitString).native
-		c.num_address = 0
-		c.num_authdata = 0
-		c.ticket = CCACHEOctetString.from_asn1(Ticket(krbcred['tickets'][0]).dump()) #kirbi only stores one ticket per file
-		c.second_ticket = CCACHEOctetString.empty()
-		
+			self.primary_principal = c.client		
 		self.credentials.append(c)
-		
-	@staticmethod
-	def from_kirbi(kirbidata):
-		kirbi = KRBCRED.load(kirbidata).native
-		cc = CCACHE()
-		cc.add_kirbi(kirbi)		
-		return cc
+
+	def get_all_tgt_kirbis(self):
+		"""
+		Returns a list of AS_REP tickets in kirbi format (Kirbi). 
+		To determine which ticket are AP_REP we check for the server principal to be the kerberos service
+		"""
+		tgts = []
+		for cred in self.credentials:
+			if cred.server.to_string(separator = '/').lower().find('krbtgt') != -1:
+				tgts.append(cred.to_kirbi()[0])
+
+		return tgts
 
 	def get_all_tgt(self):
 		"""
@@ -620,6 +638,63 @@ class CCACHE:
 				tgts.append(cred.to_tgt())
 
 		return tgts
+	
+	def get_tgs(self, spn:KerberosSPN, strict:bool=False):
+		tgss = self.get_all_tgs()
+		for tgs, keystruct in tgss:
+			ticket_for = ('/'.join(tgs['ticket']['sname']['name-string'])) + '@' + tgs['ticket']['realm']
+			if ticket_for.upper() == str(spn).upper():
+				logger.debug('Found TGS for SPN %s' % ticket_for)
+				return tgs, keystruct, None
+		
+		if strict is True:
+			return None, None, Exception('No TGS found for SPN %s' % spn)
+		
+		# I hope you know what you are doing at this point...
+		# Couldn't find the correct TGS for the SPN, returning the first one
+		# the only valid reason this can happen is mismatching service tag in the SPN
+		# this is a hack...
+		return tgss[0][0], tgss[0][1], None
+	
+	def get_tgt(self, username, domain = None, strict:bool=False):
+		tgts = [x for x in self.get_all_tgt()]
+		if len(tgts) == 0:
+			return None, None, Exception('No TGT found in CCACHE file')
+		
+		if strict is False:
+			if username is None:
+				#no username was supplied, returning first TGT and hope for the best
+				logger.debug('Missing username, returning first availabla TGT!')
+				return tgts[0][0], tgts[0][1], None
+			if domain is None:
+				# no domain was supplied, trying to find a TGT for the user in any domain
+				for tgt, keystruct in tgts:
+					if tgt['cname']['name-string'].find(str(username)) != -1:
+						logger.debug('Found TGT for user %s' % username)
+						return tgt, keystruct, None
+					
+				# no TGT found for the user in any domain
+				# returning first TGT and hope for the best
+				logger.debug('Missing domain, user not found, returning first availabla TGT!')
+				return tgts[0][0], tgts[0][1], None
+
+			# at this point it seems that both username and domain is supplied
+			# proceeding as if strict check was true
+
+		for tgt, keystruct in tgts:
+			our_user = str(username) + '@' + str(domain)
+			ticket_for = '/'.join(tgt['cname']['name-string']) + '@' + tgt['crealm']
+			if ticket_for.upper() == our_user.upper():
+				logger.debug('Found TGT for user %s' % our_user)
+				return tgt, keystruct, None
+		
+		if strict is False:
+			# no TGT found for the user in any domain
+			# returning first TGT and hope for the best
+			logger.debug('domain+user combo not found, returning first availabla TGT!')
+			return tgts[0][0], tgts[0][1], None
+
+		return None, None, Exception('No TGT found for user %s' % our_user)
 
 	def get_all_tgs(self):
 		tgss = []
@@ -629,7 +704,7 @@ class CCACHE:
 
 		return tgss
 
-	def get_hashes(self, all_hashes = False):
+	def get_hashes(self):
 		"""
 		Returns a list of hashes in hashcat-firendly format for tickets with encryption type 23 (which is RC4)
 		all_hashes: overrides the encryption type filtering and returns hash for all tickets
@@ -637,14 +712,12 @@ class CCACHE:
 		"""
 		hashes = []
 		for cred in self.credentials:
-			res = Ticket.load(cred.ticket.to_asn1()).native
-			if int(res['enc-part']['etype']) == 23 or all_hashes == True:
-				hashes.append(cred.to_hash())
+			hashes.append(cred.to_hash())
 
 		return hashes
 		
 	@staticmethod
-	def parse(reader):
+	def parse(reader:io.BytesIO):
 		c = CCACHE(True)
 		c.file_format_version = int.from_bytes(reader.read(2), byteorder='big', signed=False)
 		
@@ -682,9 +755,24 @@ class CCACHE:
 		for cred in self.credentials:
 			t += cred.to_bytes()
 		return t
+
+	def list_targets(self):
+		for cred in self.credentials:
+			target = cred.server
+			yield target.to_spn()
+
+	@staticmethod
+	def from_kirbi(kirbidata:Kirbi):
+		if isinstance(kirbidata, Kirbi) is False:
+			kirbi = Kirbi.from_bytes(kirbidata)
+		else:
+			kirbi = kirbidata
+		cc = CCACHE()
+		cc.add_kirbi(kirbi)
+		return cc
 	
 	@staticmethod
-	def from_kirbifile(kirbi_filename):
+	def from_kirbifile(kirbi_filename:str):
 		kf_abs = os.path.abspath(kirbi_filename)
 		kirbidata = None
 		with open(kf_abs, 'rb') as f:
@@ -693,9 +781,8 @@ class CCACHE:
 			ccache = CCACHE.from_kirbi(kirbidata)
 		except:
 			#maybe the kirbi file is actually base64 encoded from rubeus?
-			kirbidata = kirbidata.replace(b' ', b'').replace(b'\r', b'').replace(b'\n', b'').replace(b'\t', b'')
-			kirbidata = base64.b64decode(kirbidata)
-			ccache = CCACHE.from_kirbi(kirbidata)
+			kirbi = Kirbi.from_b64(kirbidata)
+			ccache = CCACHE.from_kirbi(kirbi)
 		
 		return ccache
 	
@@ -707,14 +794,12 @@ class CCACHE:
 		cc = CCACHE()
 		dir_path = os.path.join(os.path.abspath(directory_path), '*.kirbi')
 		for filename in glob.glob(dir_path):
-			with open(filename, 'rb') as f:
-				kirbidata = f.read()
-				kirbi = KRBCRED.load(kirbidata).native
-				cc.add_kirbi(kirbi)
+			kirbi = Kirbi.from_file(filename)
+			cc.add_kirbi(kirbi)
 		
 		return cc
 		
-	def to_kirbidir(self, directory_path):
+	def to_kirbidir(self, directory_path:str):
 		"""
 		Converts all credential object in the CCACHE object to the kirbi file format used by mimikatz.
 		The kirbi file format supports one credential per file, so prepare for a lot of files being generated.
@@ -726,14 +811,7 @@ class CCACHE:
 			kirbi, filename = cred.to_kirbi()
 			filename = '%s.kirbi' % filename.replace('..','!')
 			filepath = os.path.join(kf_abs, filename)
-			with open(filepath, 'wb') as o:
-				o.write(kirbi.dump())
-
-	def list_targets(self):
-		for cred in self.credentials:
-			target = cred.server
-			yield target.to_spn()
-
+			kirbi.to_file(filepath)
 	
 	@staticmethod
 	def from_file(filename):
@@ -753,3 +831,17 @@ class CCACHE:
 	@staticmethod
 	def from_bytes(data):
 		return CCACHE.parse(io.BytesIO(data))
+
+	@staticmethod
+	def from_hex(hexdata):
+		return CCACHE.from_bytes(bytes.fromhex(hexdata))
+	
+	def to_hex(self):
+		return self.to_bytes().hex()
+	
+	def to_b64(self):
+		return base64.b64encode(self.to_bytes()).decode('ascii')
+
+	@staticmethod
+	def from_b64(b64data):
+		return CCACHE.from_bytes(base64.b64decode(b64data))

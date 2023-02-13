@@ -29,7 +29,7 @@ def crack_asrep(hashlist, tickets, total = 0):
 			ki = HMAC.new(pwhash, keyusage, MD5).digest()
 			ke = HMAC.new(ki, checksum, MD5).digest()
 			# at this point you can add some optimizations to make it faster,
-			# but honestly I don't think it's needed
+			# but honestly I don't think it's needed, it's Python so it will be slow anyhow
 			basic_plaintext = ARC4(ke).decrypt(edata)
 			exp_cksum = HMAC.new(ki, basic_plaintext, MD5).digest()
 			if checksum == exp_cksum:
@@ -80,19 +80,11 @@ def crack_tgs(hashlist, tickets, total = 0):
 			continue
 		print('%s: %s' % (tgs, result.hex()))
 
-def main():
-	import argparse
-	
-	parser = argparse.ArgumentParser(description='Tries to decrypt RC4 TGS or ASREP ($krb5tgs$23$ / $krb5asrep$23$) using a list of NT hashes')
-	parser.add_argument('hashlist', help='File containing NT hashes')
-	parser.add_argument('ticket', help='Kerberoasted ticket in hashcat format. $krb5tgs$23$... or $krb5asrep$23$...')
-	
-	args = parser.parse_args()
-	
+def crack(hashlist, tickets):
 	spntickets = []
 	asreptickets = []
-	if args.ticket.lower().find('$krb5tgs$23$') == -1 and args.ticket.lower().find('$krb5asrep$23$') == -1:
-		with open(args.ticket, 'r') as f:
+	if tickets.lower().find('$krb5tgs$23$') == -1 and tickets.lower().find('$krb5asrep$23$') == -1:
+		with open(tickets, 'r') as f:
 			for line in f:
 				line = line.strip()
 				if line == '':
@@ -103,10 +95,10 @@ def main():
 				if line.lower().find('$krb5asrep$23$') != -1:
 					asreptickets.append(line)
 	else:
-		if args.ticket.lower().find('$krb5tgs$23$') != -1:
-			spntickets.append(args.ticket)
-		if args.ticket.lower().find('$krb5asrep$23$') != -1:
-			asreptickets.append(args.ticket)
+		if tickets.lower().find('$krb5tgs$23$') != -1:
+			spntickets.append(tickets)
+		if tickets.lower().find('$krb5asrep$23$') != -1:
+			asreptickets.append(tickets)
 	
 	tt = len(spntickets) + len(asreptickets)
 	if tt == 0:
@@ -115,18 +107,30 @@ def main():
 	
 	print('Loaded %s tickets' % tt)
 	total = 0
-	with open(args.hashlist, 'r') as f:
+	with open(hashlist, 'r') as f:
 		for line in f:
 			line = line.strip()
 			if line == '':
 				continue
 			total += 1
 	
-	with open(args.hashlist, 'r') as f:
+	with open(hashlist, 'r') as f:
 		if len(spntickets) > 0:
 			crack_tgs(f, spntickets, total=total)
 		if len(asreptickets) > 0:
 			crack_asrep(f, asreptickets, total=total)
+
+
+def main():
+	import argparse
+	
+	parser = argparse.ArgumentParser(description='Tries to decrypt RC4 TGS or ASREP ($krb5tgs$23$ / $krb5asrep$23$) using a list of NT hashes')
+	parser.add_argument('hashlist', help='File containing NT hashes')
+	parser.add_argument('tickets', help='Kerberoasted ticket in hashcat format. $krb5tgs$23$... or $krb5asrep$23$...')
+	 
+	args = parser.parse_args()
+	
+	crack(args.hashlist, args.tickets)
 
 
 if __name__ == '__main__':
