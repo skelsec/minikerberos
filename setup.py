@@ -49,6 +49,7 @@ setup(
 		'asysocks>=0.2.2',
 		'unicrypto>=0.0.10',
 		'tqdm',
+        'six',
 	],
 
 	entry_points={

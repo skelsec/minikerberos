@@ -23,4 +23,4 @@ pyinstaller -F getTGT.py %hiddenimports% &^
 pyinstaller -F kerb23hashdecrypt.py %hiddenimports% &^
 pyinstaller -F kirbi2ccache.py %hiddenimports% &^
 pyinstaller -F spnroast.py %hiddenimports% &^
-cd %repo%\dist & copy *.exe %root%\
+cd %repo%\examples\dist & copy *.exe %root%\
