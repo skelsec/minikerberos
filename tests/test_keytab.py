@@ -3,12 +3,8 @@
 import tempfile
 import pathlib
 from minikerberos.common.keytab import Keytab, KeytabPrincipal, KeytabOctetString
+from .config import *
 
-def get_testfiles_keytab():
-    current_file_path = pathlib.Path(__file__).parent.absolute()
-    kirbi_file_path = current_file_path.joinpath('testdata', 'keytab')
-    for kirbifile in kirbi_file_path.glob('*.keytab'):
-        yield kirbifile
 
 def test_keytab_load():
     for keytabfile in get_testfiles_keytab():

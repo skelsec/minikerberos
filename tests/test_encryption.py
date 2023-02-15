@@ -2,9 +2,6 @@
 from minikerberos.protocol.encryption import Key, Enctype, encrypt, decrypt, verify_checksum, Cksumtype, string_to_key, cf2, _zeropad, prf
 from binascii import unhexlify as h
 
-#def h(hexstr):
-#	return unhexlify(hexstr)
-
 def test_encdec_aes():
 	# AES128 encrypt and decrypt
 	kb = h('9062430C8CDA3388922E6D6A509F5B7A')

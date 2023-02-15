@@ -21,7 +21,7 @@ from minikerberos.protocol.dirtydh import DirtyDH
 from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
 from oscrypto.keys import parse_pkcs12, parse_certificate, parse_private
 
-def get_encoded_data(data:bytes|str, encoding = 'file') -> bytes:
+def get_encoded_data(data:bytes or str, encoding = 'file') -> bytes:
 	if encoding == 'file':
 		with open(data, 'rb') as kf:
 			return kf.read()
@@ -246,7 +246,7 @@ class KerberosCredential:
 		return KerberosCredential.from_kirbi(keytab_file_path, principal, realm)
 	
 	@staticmethod
-	def from_keytab_string(keytabdata: str | bytes, principal: str, realm: str) -> KerberosCredential:
+	def from_keytab_string(keytabdata: str or bytes, principal: str, realm: str) -> KerberosCredential:
 		cred = KerberosCredential()
 		if principal is None:
 			raise Exception('Principal is required')
@@ -356,7 +356,7 @@ class KerberosCredential:
 		return k
 
 	@staticmethod
-	def from_pfx_string(data: str|bytes, password:str, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
+	def from_pfx_string(data: str or bytes, password:str, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
 		k = KerberosCredential()
 		if password is None:
 			password = b''

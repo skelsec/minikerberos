@@ -1,27 +1,10 @@
 import shutil
 import os
-import pathlib
+
 from minikerberos.common.factory import KerberosClientFactory
 from minikerberos.common.ccache import CCACHE
+from .config import *
 
-CURRENT_FILE_PATH = pathlib.Path(__file__).parent.absolute()
-CCACHE_DIR = CURRENT_FILE_PATH.joinpath('testdata', 'ccache')
-ADMIN_CCACHE = CCACHE_DIR.joinpath('administrator.ccache')
-KIRBI_DIR = CURRENT_FILE_PATH.joinpath('testdata', 'kirbi')
-
-def get_testfiles_kirbi():
-	current_file_path = pathlib.Path(__file__).parent.absolute()
-	kirbi_file_path = current_file_path.joinpath('testdata', 'kirbi')
-	for kirbifile in kirbi_file_path.glob('*.kirbi'):
-		yield kirbifile
-
-def listcompare(list1, list2):
-	if len(list1) != len(list2):
-		raise Exception('Lists are not the same length')
-	for item in list1:
-		if item not in list2:
-			raise Exception('Item not found in list2: %s' % item)
-	return True
 
 def test_url_nt_1():
 	urlstr = 'kerberos+nt://domain\\user:921a7fece11f4d8c72432e41e40d0372@127.0.0.1'

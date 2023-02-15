@@ -49,19 +49,6 @@ class AIOKerberosClient:
 		self.kerberos_key = None
 		self.server_salt = None
 
-	@staticmethod
-	def from_tgt(ccred:KerberosCredential, target:KerberosTarget, tgt, key) -> AIOKerberosClient:
-		"""
-		Sets up the kerberos object from tgt and the session key.
-		Use this function when pulling the TGT from ccache file.
-		"""
-		kc = AIOKerberosClient(ccred, target)
-		kc.kerberos_TGT = tgt
-		kc.kerberos_cipher_type = key['keytype']
-		kc.kerberos_session_key = Key(kc.kerberos_cipher_type, key['keyvalue'])
-		kc.kerberos_cipher = _enctype_table[kc.kerberos_cipher_type]
-		return kc
-
 	def build_asreq_lts(self, supported_encryption_method, kdcopts:List[str] = ['forwardable','renewable','proxiable'], enctimestamp=None, newnow=None, no_preauth = False, kdc_req_body_extra = None, with_pac:bool = True) -> AS_REQ:
 		logger.debug('Constructing TGT request with auth data')
 		#now to create an AS_REQ with encrypted timestamp for authentication

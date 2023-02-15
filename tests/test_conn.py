@@ -11,40 +11,7 @@ import shutil
 import os
 
 import pytest 
-
-
-
-# TEST DATA
-##
-KERBEROS_SERVER = '10.10.10.2'
-KERBEROS_DOMAIN = 'TEST.CORP'
-KERBEROS_USER = 'victim'
-KERBEROS_PASSWORD = 'Passw0rd!1'
-
-## Generic user account with valid credentials
-KERBEROS_CONN_URL_PW = 'kerberos+password://TEST\\victim:Passw0rd!1@10.10.10.2'
-KERBEROS_CONN_URL_RC4 = 'kerberos+rc4://TEST\\victim:f8963568a1ec62a3161d9d6449baba93@10.10.10.2'
-KERBEROS_CONN_URL_RC4MD4 = 'kerberos+password://TEST\\victim:Passw0rd!1@10.10.10.2/?etype=-128'
-KERBEROS_CONN_URL_AES128 = 'kerberos+password://TEST\\victim:Passw0rd!1@10.10.10.2/?etype=17'
-KERBEROS_CONN_URL_AES256 = 'kerberos+password://TEST\\victim:Passw0rd!1@10.10.10.2/?etype=18'
-KERBEROS_CONN_URL_PKINIT_PFX = 'kerberos+pfx://TEST\\victim:admin@10.10.10.2/?certdata=a.pfx'
-KERBEROS_CONN_URL_PKINIT_PEM = 'kerberos+pem://TEST\\victim@10.10.10.2/?certdata=a.pem&keydata=a.key'
-
-
-# SPN string for a valid TGS request
-KERBEROS_TGS_SPN = 'cifs/win2019ad.test.corp@test.corp'
-
-# Machine account for delegation tests
-KERBEROS_CONN_URL_MACHINE = 'kerberos+password://TEST\\delegationtest$:TESTPassw0rd!1TESTPassw0rd!1@10.10.10.2'
-
-# SPN string for a valid TGS request
-KERBEROS_DELEGATION_USER_SELF = 'Administrator@test.corp'
-KERBEROS_DELEGATION_SPN_SELF = 'cifs/delegationtest.test.corp@test.corp'
-
-KERBEROS_DELEGATION_USER_PROXY = 'victim@test.corp'
-KERBEROS_DELEGATION_SPN_PROXY = 'cifs/win2019ad.test.corp@test.corp'
-
-KERBEROS_KERBEROAST_USER = 'srv_http'
+from .config import *
 
 
 @pytest.mark.asyncio

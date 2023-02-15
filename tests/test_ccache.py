@@ -5,32 +5,10 @@ import tempfile
 from minikerberos.common.kirbi import Kirbi
 from minikerberos.common.ccache import CCACHE, Header, DateTime, Times,\
 	Address, CCACHEOctetString, Authdata, Credential
-
-CURRENT_FILE_PATH = pathlib.Path(__file__).parent.absolute()
-KIRBI_DIR = CURRENT_FILE_PATH.joinpath('testdata', 'kirbi')
-
-def get_testfiles():
-	current_file_path = pathlib.Path(__file__).parent.absolute()
-	ccache_file_path = current_file_path.joinpath('testdata', 'ccache')
-	for ccachefile in ccache_file_path.glob('*.ccache'):
-		yield ccachefile
-
-def get_testfiles_kirbi():
-	current_file_path = pathlib.Path(__file__).parent.absolute()
-	kirbi_file_path = current_file_path.joinpath('testdata', 'kirbi')
-	for kirbifile in kirbi_file_path.glob('*.kirbi'):
-		yield kirbifile
-
-def listcompare(list1, list2):
-	if len(list1) != len(list2):
-		raise Exception('Lists are not the same length')
-	for item in list1:
-		if item not in list2:
-			raise Exception('Item not found in list2: %s' % item)
-	return True
+from .config import *
 
 def test_load_ccache():
-	for ccachefile in get_testfiles():
+	for ccachefile in get_testfiles_ccache():
 		ccache = CCACHE.from_file(ccachefile)
 		assert len(ccache.credentials) > 0
 		targets = [x for x in ccache.list_targets()]
@@ -43,7 +21,7 @@ def test_load_ccache():
 			assert str(ccache) == str(ccache2)
 
 def test_load_bytes():
-	for ccachefile in get_testfiles():
+	for ccachefile in get_testfiles_ccache():
 		with open(ccachefile, 'rb') as f:
 			ccache_bytes = f.read()
 			ccache = CCACHE.from_bytes(ccache_bytes)
@@ -56,7 +34,7 @@ def test_load_bytes():
 		assert listcompare(targets, targets2)
 
 def test_load_hex():
-	for ccachefile in get_testfiles():
+	for ccachefile in get_testfiles_ccache():
 		ccache = CCACHE.from_file(ccachefile)
 		assert len(ccache.credentials) > 0
 		targets = [x for x in ccache.list_targets()]
@@ -67,7 +45,7 @@ def test_load_hex():
 		assert listcompare(targets, targets2)
 
 def test_load_b64():
-	for ccachefile in get_testfiles():
+	for ccachefile in get_testfiles_ccache():
 		ccache = CCACHE.from_file(ccachefile)
 		assert len(ccache.credentials) > 0
 		targets = [x for x in ccache.list_targets()]
@@ -78,7 +56,7 @@ def test_load_b64():
 		assert listcompare(targets, targets2)
 
 def test_to_kirbidir():
-	for ccachefile in get_testfiles():
+	for ccachefile in get_testfiles_ccache():
 		ccache = CCACHE.from_file(ccachefile)
 		assert len(ccache.credentials) > 0
 		targets = [x for x in ccache.list_targets()]
@@ -127,7 +105,7 @@ def test_get_hashes():
 	assert len(hashes) > 0
 
 def test_get_all_tgt():
-	for ccachefile in get_testfiles():
+	for ccachefile in get_testfiles_ccache():
 		if ccachefile.name != 'administrator.ccache':
 			continue
 		ccache = CCACHE.from_file(ccachefile)
@@ -147,7 +125,7 @@ def test_get_all_tgt():
 def test_get_all_tgt_1():
 	# TODO: add a test case with multiple TGSs
 	# there should be another test case with actual tgs
-	for ccachefile in get_testfiles():
+	for ccachefile in get_testfiles_ccache():
 		if ccachefile.name != 'administrator.ccache':
 			continue
 		ccache = CCACHE.from_file(ccachefile)
@@ -216,7 +194,7 @@ def test_octetstring_string():
 	assert os.data == tdata.encode()
 
 def test_credential_summary():
-	for ccachefile in get_testfiles():
+	for ccachefile in get_testfiles_ccache():
 		ccache = CCACHE.from_file(ccachefile)
 		assert len(ccache.credentials) > 0
 		for cred in ccache.credentials:
@@ -224,7 +202,7 @@ def test_credential_summary():
 
 
 #def test_credential_tgs():
-#	for ccachefile in get_testfiles():
+#	for ccachefile in get_testfiles_ccache():
 #		ccache = CCACHE.from_file(ccachefile)
 #		assert len(ccache.credentials) > 0
 #		for cred in ccache.credentials:

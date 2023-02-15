@@ -3,15 +3,11 @@
 import tempfile
 import pathlib
 from minikerberos.common.kirbi import Kirbi
+from .config import *
 
-def get_testfiles():
-    current_file_path = pathlib.Path(__file__).parent.absolute()
-    kirbi_file_path = current_file_path.joinpath('testdata', 'kirbi')
-    for kirbifile in kirbi_file_path.glob('*.kirbi'):
-        yield kirbifile
 
 def test_load_kirbi():
-    for kirbifile in get_testfiles():
+    for kirbifile in get_testfiles_kirbi():
         kirbi = Kirbi.from_file(kirbifile)
         desc = str(kirbi)
         with tempfile.NamedTemporaryFile() as f:
@@ -21,7 +17,7 @@ def test_load_kirbi():
             assert desc == desc2
 
 def test_kirbi_b64():
-    for kirbifile in get_testfiles():
+    for kirbifile in get_testfiles_kirbi():
         kirbi = Kirbi.from_file(kirbifile)
         desc1 = str(kirbi)
         kirbi_b64 = kirbi.to_b64()
@@ -30,7 +26,7 @@ def test_kirbi_b64():
         assert desc1 == desc2
 
 def test_kirbi_hex():
-    for kirbifile in get_testfiles():
+    for kirbifile in get_testfiles_kirbi():
         kirbi = Kirbi.from_file(kirbifile)
         desc1 = str(kirbi)
         kirbi_hex = kirbi.to_hex()
@@ -39,7 +35,7 @@ def test_kirbi_hex():
         assert desc1 == desc2
 
 def test_kirbi_bytes():
-    for kirbifile in get_testfiles():
+    for kirbifile in get_testfiles_kirbi():
         kirbi = Kirbi.from_file(kirbifile)
         desc1 = str(kirbi)
         kirbi_bytes = kirbi.to_bytes()
