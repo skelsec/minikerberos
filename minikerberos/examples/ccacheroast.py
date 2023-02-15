@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
-#
-# Author:
-#  Tamas Jos (@skelsec)
-#
 
 from minikerberos.common.ccache import CCACHE
+
+def ccacheroast(ccachefilepath):
+	ccache = CCACHE.from_file(ccachefilepath)
+	for hash in ccache.get_hashes():
+		print(hash)
 
 def main():
 	import argparse
@@ -12,10 +12,8 @@ def main():
 	parser.add_argument('ccache', help='CCACHE file to roast')
 	
 	args = parser.parse_args()
+	ccacheroast(args.ccache)
 	
-	ccache = CCACHE.from_file(args.ccache)
-	for hash in ccache.get_hashes(all_hashes = True):
-		print(hash)
 		
 		
 if __name__ == '__main__':

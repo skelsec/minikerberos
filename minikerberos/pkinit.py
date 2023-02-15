@@ -19,11 +19,6 @@ from asn1crypto import core
 from asn1crypto import x509
 from asn1crypto import keys
 
-import oscrypto
-#if platform.system().lower() == 'emscripten':
-#	# these imports are pyodide-specific
-#	import ssl
-#	oscrypto.use_openssl('/lib/python3.10/site-packages/libcrypto.so', '/lib/python3.10/site-packages/libssl.so')
 from oscrypto.keys import parse_pkcs12
 from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
 

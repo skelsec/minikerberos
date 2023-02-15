@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-#
-# Author:
-#  Tamas Jos (@skelsec)
-#
-
 # Sources used:
 # https://zeroshell.org/kerberos/kerberos-operation/
 # https://tools.ietf.org/html/rfc4120

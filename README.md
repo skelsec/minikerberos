@@ -3,7 +3,7 @@
 :triangular_flag_on_post: This is the public repository of minikerberos, for latest version and updates please consider supporting us through https://porchetta.industries/
 
 # minikerberos
-Kerberos manipulation library in pure Python.
+`minikerberos` is a kerberos client library written in `Python>=3.6` it is the kerberos library used in other tools suchs as `pypykatz`, `aiosmb` and `msldap`. It also comes with multiple useful examples for pentesters who wish to perform security audits on the kerberos protocol.  
 
 ## :triangular_flag_on_post: Sponsors
 
@@ -14,41 +14,7 @@ If you want to sponsors this project and have the latest updates on this project
 Come hang out on Discord!
 
 [![Porchetta Industries](https://discordapp.com/api/guilds/736724457258745996/widget.png?style=banner3)](https://discord.gg/ycGXUxy)
-
-
-## Prerequisites
-
-- Python >= 3.6  
-- `asn1crypto`: the best Python lib to parse/modify/construct ASN1 data. It is
-  also written in pure Python, so no need to compile anything, just install
-  and use.
-- `oscrypto`: For certificate operations
-- `asysocks`: Provides built-in SOCKS/HTTP/etc proxy capability
-
-## Usage
-This is a library so the main intention is to use it in your code, however
-the "examples" folder contain a few useful examples to show what this lib is
-capable of.  
-
-- `ccache2kirbi.py` converts CCACHE - kerberos cache - file to kirbi files.
-   Kirbi file is supported by mimikatz to perform pass the ticket attacks.  
-  
-- `kirbi2ccache.py` converts a kirbi file, or a directory full of kirbi files
-  into one CCACHE file. This helps users who prefer to use impacket to perform
-  Kerberos ticket related attacks  
-  
-- `getTGT.py` polls a Kerberos server for a TGT given that you have some user
-  secrets at your disposal. The TGT will be saved in a CCACHE file. The minimum
-  required "user secret" is either a password OR and NT hash of the user OR
-  the Kerberos AES key of the user.
-  
-- `getTGS.py` same as `getTGT.py` but also gets a TGS ticket for a given
-  service from the domain controller.
-
-- `getS4U2proxy.py` to be used for getting a TGS ticket on behalf of another user. Basically it performs a kerberos constrained delegation process.
-
-- `getS4U2self.py` yes.
-  
+ 
 ## Installation
 
 Install it via either cloning it from GitHub and using  
@@ -66,3 +32,50 @@ $ pip install minikerberos --user
 ```
 
 Consider to use a Python virtual environment.
+
+## Information for developers
+`minikerberos` library contains both asynchronous and blocking versions of the kerberos client with the same API. Besides the usual password/aes/rc4 LTK authentication methods it also supports PKINIT using `pfx` or `pem` formatted certificates as well as certificates stored in windows certificate store. 
+
+## Information for pentesters
+`minikerberos` comes with examples which can be used to perform the usual pentest activities out-of-the-box without additional coding required.
+
+# Examples AKA the pentest tools
+Installing `minikerberos` module via pip will automatically place all examples in the `Scripts` directory by the `setuptools` build environment. All tools named in the following way `minikerberos-<toolname>`
+
+## minikerberos-getTGT
+Fetches a TGT for the given kerberos credential. The kredential must be in a standard `kerberos URL` format.
+
+## minikerberos-getTGS
+Fetches an TGS ticket (TGSREP) for the given cerberos credential and SPN record.  
+SPN must be in `service/hostname@FQDN` format.
+
+## minikerberos-kerberoast
+Also known as SPNRoast, this tool performs a kerberoast attack against one or multiple users, using the provided kerberos credential.
+
+## minikerberos-getNTPKInit
+This tool recovers the NT hash for the user specified by the kerberos credential. This only works if PKINIT (cert based auth) is used.
+
+## minikerberos-kerb23hashdecrypt
+This tool attempts to recover the user's NT hash for a list of kerberoast hashes.  
+When you performed a kerberoast attack against one or multiple users, and have a huge list of NT hashes (no password needed) this tool will check each NT hash if it can decrypt the ticket in the kerberoasted hashes.  
+Full disclosure, those are not hashes and it hurt me writing the previous sentence.  
+
+## minikerberos-getS4U2self
+This tool is used when you have credentials to a machine account and would like to impersonate other users on the same machine. Machine account credential should be supplied in the `kerberos URL` format, while the user to be impersonated should be in the usual UserPrincialName format eg `username@FQDN`
+
+## minikerberos-getS4U2proxy
+This tool is used when you have a machine account which has the permission to perform Kerberos Resource-based Constrained Delegation (RBCD). With this, you can impersonate users. For this to work, the machine account must be allowed to delegate on all protocols, not kerberos-only!
+
+## minikerberos-ccacheroast
+Performs "Kerberoast" attack on a CCACHE file. You get back the "hashes" for all TGS tickets stored in the CCACHE file.
+
+## minikerberos-ccache2kirbi
+Converts a CCACHE file to a list of `.kirbi` files.
+
+
+## minikerberos-kirbi2ccache
+Converts one or more `.kirbi` files into one CCACHE file
+
+## minikerberos-ccacheedit
+Command-line CCACHE file editor. It can list/delete credentials in a CCACHE file.
+

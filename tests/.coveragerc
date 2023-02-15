@@ -1,0 +1,2 @@
+[run]
+omit = ../tests/*, ../minikerberos/protocol/external/*, ../minikerberos/examples/*

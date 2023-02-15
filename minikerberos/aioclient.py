@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-#
-# Author:
-#  Tamas Jos (@skelsec)
-#  Dirk-jan Mollema (@_dirkjan) -parts of the PKINIT getTGT-
-#
-
 from __future__ import annotations
 from unicrypto import hashlib
 import collections
@@ -19,7 +12,7 @@ from minikerberos.protocol.asn1_structs import METHOD_DATA, ETYPE_INFO, ETYPE_IN
 	PADATA_TYPE, PA_PAC_REQUEST, PA_ENC_TS_ENC, EncryptedData, krb5_pvno, KDC_REQ_BODY, \
 	AS_REQ, TGS_REP, KDCOptions, PrincipalName, EncASRepPart, EncTGSRepPart, PrincipalName, Realm, \
 	Checksum, APOptions, Authenticator, Ticket, AP_REQ, TGS_REQ, CKSUMTYPE, \
-	PA_FOR_USER_ENC, PA_PAC_OPTIONS, PA_PAC_OPTIONSTypes, EncTicketPart, AD_IF_RELEVANT
+	PA_FOR_USER_ENC, PA_PAC_OPTIONS, PA_PAC_OPTIONSTypes, EncTicketPart
 
 from minikerberos.protocol.errors import KerberosErrorCode, KerberosError
 from minikerberos.protocol.encryption import Key, _enctype_table, _HMACMD5, Enctype, _checksum_table
@@ -32,16 +25,20 @@ from minikerberos.common.creds import KerberosCredential
 from minikerberos.common.target import KerberosTarget
 from minikerberos.protocol.rfc4556 import PKAuthenticator, AuthPack, PA_PK_AS_REP, KDCDHKeyInfo, PA_PK_AS_REQ
 from minikerberos.gssapi.channelbindings import ChannelBindingsStruct
+from minikerberos.protocol.ticketutils import construct_apreq_from_tgs_tgt
 
 from asn1crypto import cms
 from asn1crypto import core
 
 class AIOKerberosClient:
 	def __init__(self, ccred:KerberosCredential, target:KerberosTarget):
-		self.usercreds = ccred
+		self.credential = ccred
 		self.target = target
 		self.ksoc = AIOKerberosClientSocket(self.target)
-		self.ccache = CCACHE() if self.usercreds.ccache is None else self.usercreds.ccache
+		self.ccache = CCACHE()
+		if ccred is not None:
+			self.ccache = CCACHE() if self.credential.ccache is None else self.credential.ccache
+		
 		self.pkinit_tkey = None
 		self.kerberos_session_key = None
 		self.kerberos_TGT = None
@@ -52,28 +49,16 @@ class AIOKerberosClient:
 		self.kerberos_key = None
 		self.server_salt = None
 
-	@staticmethod
-	def from_tgt(target, tgt, key) -> AIOKerberosClient:
-		"""
-		Sets up the kerberos object from tgt and the session key.
-		Use this function when pulling the TGT from ccache file.
-		"""
-		kc = AIOKerberosClient(None, target)
-		kc.kerberos_TGT = tgt
-		
-		kc.kerberos_cipher_type = key['keytype']
-		kc.kerberos_session_key = Key(kc.kerberos_cipher_type, key['keyvalue']) 
-		kc.kerberos_cipher = _enctype_table[kc.kerberos_cipher_type]
-		return kc
-
-	def build_asreq_lts(self, supported_encryption_method, kdcopts:List[str] = ['forwardable','renewable','proxiable'], enctimestamp=None, newnow=None, no_preauth = False, kdc_req_body_extra = None) -> AS_REQ:
+	def build_asreq_lts(self, supported_encryption_method, kdcopts:List[str] = ['forwardable','renewable','proxiable'], enctimestamp=None, newnow=None, no_preauth = False, kdc_req_body_extra = None, with_pac:bool = True) -> AS_REQ:
 		logger.debug('Constructing TGT request with auth data')
 		#now to create an AS_REQ with encrypted timestamp for authentication
 		padatas = []
-		pa_data_1 = {}
-		pa_data_1['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
-		pa_data_1['padata-value'] = PA_PAC_REQUEST({'include-pac': True}).dump()
-		padatas.append(pa_data_1)
+		
+		if with_pac is True:
+			pa_data_1 = {}
+			pa_data_1['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
+			pa_data_1['padata-value'] = PA_PAC_REQUEST({'include-pac': True}).dump()
+			padatas.append(pa_data_1)
 		
 		logger.debug('Selecting common encryption type: %s' % supported_encryption_method.name)
 		now = datetime.datetime.now(datetime.timezone.utc)
@@ -83,7 +68,7 @@ class AIOKerberosClient:
 				timestamp = PA_ENC_TS_ENC({'patimestamp': now.replace(microsecond=0), 'pausec': now.microsecond}).dump()
 				self.kerberos_cipher = _enctype_table[supported_encryption_method.value]
 				self.kerberos_cipher_type = supported_encryption_method.value
-				self.kerberos_key = Key(self.kerberos_cipher.enctype, self.usercreds.get_key_for_enctype(supported_encryption_method, salt = self.server_salt))
+				self.kerberos_key = Key(self.kerberos_cipher.enctype, self.credential.get_key_for_enctype(supported_encryption_method, salt = self.server_salt))
 				enc_timestamp = self.kerberos_cipher.encrypt(self.kerberos_key, 1, timestamp, None)
 			else:
 				now = newnow
@@ -96,9 +81,9 @@ class AIOKerberosClient:
 
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(kdcopts))
-		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': self.usercreds.username.split('/')})
-		kdc_req_body['realm'] = self.usercreds.domain.upper()
-		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
+		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': self.credential.username.split('/')})
+		kdc_req_body['realm'] = self.credential.domain.upper()
+		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.credential.domain.upper()]})
 		kdc_req_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['rtime'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['nonce'] = secrets.randbits(31)
@@ -116,7 +101,7 @@ class AIOKerberosClient:
 		
 		return AS_REQ(kdc_req)
 	
-	def build_asreq_pkinit(self, supported_encryption_method, kdcopts = ['forwardable','renewable','renewable-ok']):
+	def build_asreq_pkinit(self, supported_encryption_method, kdcopts = ['forwardable','renewable','renewable-ok'], with_pac:bool = True) -> AS_REQ:
 		from asn1crypto import keys
 
 		if supported_encryption_method.value == 23:
@@ -127,9 +112,9 @@ class AIOKerberosClient:
 
 		kdc_req_body_data = {}
 		kdc_req_body_data['kdc-options'] = KDCOptions(set(kdcopts))
-		kdc_req_body_data['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': self.usercreds.username.split('/')})
-		kdc_req_body_data['realm'] = self.usercreds.domain.upper()
-		kdc_req_body_data['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
+		kdc_req_body_data['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': self.credential.username.split('/')})
+		kdc_req_body_data['realm'] = self.credential.domain.upper()
+		kdc_req_body_data['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': ['krbtgt', self.credential.domain.upper()]})
 		kdc_req_body_data['till']  = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body_data['rtime'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body_data['nonce'] = secrets.randbits(31)
@@ -147,8 +132,8 @@ class AIOKerberosClient:
 
 
 		dp = {}
-		dp['p'] = self.usercreds.dhparams.p
-		dp['g'] = self.usercreds.dhparams.g
+		dp['p'] = self.credential.dhparams.p
+		dp['g'] = self.credential.dhparams.g
 		dp['q'] = 0 # mandatory parameter, but it is not needed
 
 		pka = {}
@@ -157,42 +142,46 @@ class AIOKerberosClient:
 
 		spki = {}
 		spki['algorithm'] = keys.PublicKeyAlgorithm(pka)
-		spki['public_key'] = self.usercreds.dhparams.get_public_key()
+		spki['public_key'] = self.credential.dhparams.get_public_key()
 
 
 		authpack = {}
 		authpack['pkAuthenticator'] = PKAuthenticator(authenticator)
 		authpack['clientPublicValue'] = keys.PublicKeyInfo(spki)
-		authpack['clientDHNonce'] = self.usercreds.dhparams.dh_nonce
+		authpack['clientDHNonce'] = self.credential.dhparams.dh_nonce
 
 		authpack = AuthPack(authpack)
-		signed_authpack = self.usercreds.sign_authpack(authpack.dump(), wrap_signed = True)
+		signed_authpack = self.credential.sign_authpack(authpack.dump(), wrap_signed = True)
 
 		payload = PA_PK_AS_REQ()
 		payload['signedAuthPack'] = signed_authpack
 
+		padatas = []
+		if with_pac is True:
+			pa_data_0 = {}
+			pa_data_0['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
+			pa_data_0['padata-value'] = PA_PAC_REQUEST({'include-pac': True}).dump()
+			padatas.append(pa_data_0)
+		
 		pa_data_1 = {}
 		pa_data_1['padata-type'] = PaDataType.PK_AS_REQ.value
 		pa_data_1['padata-value'] = payload.dump()
-
-		pa_data_0 = {}
-		pa_data_0['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
-		pa_data_0['padata-value'] = PA_PAC_REQUEST({'include-pac': True}).dump()
+		padatas.append(pa_data_1)
 
 		asreq = {}
 		asreq['pvno'] = 5
 		asreq['msg-type'] = 10
-		asreq['padata'] = [pa_data_0, pa_data_1]
+		asreq['padata'] = padatas
 		asreq['req-body'] = kdc_req_body
 
 		return AS_REQ(asreq)
 
 
-	async def do_preauth(self, supported_encryption_method, kdcopts = ['forwardable','renewable','renewable-ok']):
-		if self.usercreds.certificate is not None:
-			req = self.build_asreq_pkinit(supported_encryption_method, kdcopts)
+	async def do_preauth(self, supported_encryption_method, kdcopts = ['forwardable','renewable','renewable-ok'], with_pac:bool = True):
+		if self.credential.certificate is not None:
+			req = self.build_asreq_pkinit(supported_encryption_method, kdcopts, with_pac=with_pac)
 		else:
-			req = self.build_asreq_lts(supported_encryption_method, kdcopts)
+			req = self.build_asreq_lts(supported_encryption_method, kdcopts, with_pac=with_pac)
 
 		
 		logger.debug('Sending TGT request to server')
@@ -201,36 +190,20 @@ class AIOKerberosClient:
 			raise KerberosError(rep, 'Preauth failed!')
 		return rep
 
-	def tgt_from_ccache(self, override_etype = None):
+	def tgt_from_ccache(self):
 		try:
 			if self.ccache is None:
 				raise Exception('No CCACHE file found')
 			
-			for tgt, keystruct in self.ccache.get_all_tgt():
-				if self.usercreds.ccache_spn_strict_check is True:
-					our_user = str(self.usercreds.username) + '@' + self.usercreds.domain
-					ticket_for = '/'.join(tgt['cname']['name-string']) + '@' + tgt['crealm']
-					if ticket_for.upper() == our_user.upper():
-						logger.debug('Found TGT for user %s' % our_user)
-						self.kerberos_TGT = tgt
-						self.kerberos_TGT_encpart = tgt['enc-part']
-						self.kerberos_session_key = Key(keystruct['keytype'], keystruct['keyvalue'])
-						self.kerberos_cipher = _enctype_table[keystruct['keytype']]
-						self.kerberos_cipher_type = keystruct['keytype']
-										
-						return True, None
-				
-				else:
-					self.kerberos_TGT = tgt
-					self.kerberos_TGT_encpart = tgt['enc-part']
-					self.kerberos_session_key = Key(keystruct['keytype'], keystruct['keyvalue'])
-					self.kerberos_cipher = _enctype_table[keystruct['keytype']]
-					self.kerberos_cipher_type = keystruct['keytype']
-					return True, None
-
-			logger.debug('No TGT found for user %s' % our_user)
-			raise Exception('No TGT found for user %s' % our_user) 
-
+			tgt, keystruct, err = self.ccache.get_tgt(self.credential.username, self.credential.domain, self.credential.ccache_spn_strict_check)
+			if err is not None:
+				raise err
+			self.kerberos_TGT = tgt
+			self.kerberos_TGT_encpart = tgt['enc-part']
+			self.kerberos_session_key = Key(keystruct['keytype'], keystruct['keyvalue'])
+			self.kerberos_cipher = _enctype_table[keystruct['keytype']]
+			self.kerberos_cipher_type = keystruct['keytype']
+			return True, None
 		except Exception as e:
 			return None, e
 
@@ -252,7 +225,7 @@ class AIOKerberosClient:
 					supp_enc_methods[EncryptionType(enc_info['etype'])] = enc_info['salt']
 					logger.debug('Server supports encryption type %s with salt %s' % (EncryptionType(enc_info['etype']).name, enc_info['salt']))
 		
-		preferred_enc_type = self.usercreds.get_preferred_enctype(supp_enc_methods)
+		preferred_enc_type = self.credential.get_preferred_enctype(supp_enc_methods)
 		if preferred_enc_type not in supp_enc_methods:
 			raise Exception('Preferred enc type not in supported enctypes')
 		salt = supp_enc_methods[preferred_enc_type]
@@ -262,7 +235,7 @@ class AIOKerberosClient:
 		return preferred_enc_type
 
 
-	async def get_TGT(self, override_etype = None, decrypt_tgt = True, kdcopts = ['forwardable','renewable','proxiable'], override_sname:KerberosSPN = None):
+	async def get_TGT(self, override_etype = None, decrypt_tgt = True, kdcopts = ['forwardable','renewable','proxiable'], override_sname:KerberosSPN = None, with_pac:bool = True):
 		"""
 		decrypt_tgt: used for asreproast attacks
 		Steps performed:
@@ -272,7 +245,7 @@ class AIOKerberosClient:
 		"""
 
 		#first, let's check if CCACHE has the correct ticket already
-		_, err = self.tgt_from_ccache(override_etype)
+		_, err = self.tgt_from_ccache()
 		if err is None:
 			return
 		
@@ -280,10 +253,10 @@ class AIOKerberosClient:
 		now = datetime.datetime.now(datetime.timezone.utc)
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(kdcopts))
-		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': self.usercreds.username.split('/')})
-		kdc_req_body['realm'] = self.usercreds.domain.upper()
+		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': self.credential.username.split('/')})
+		kdc_req_body['realm'] = self.credential.domain.upper()
 		if override_sname is None:
-			kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
+			kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.credential.domain.upper()]})
 		else:
 			# if we want to directly kerberoast with no-preauth user
 			kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': override_sname.get_principalname()})
@@ -291,18 +264,20 @@ class AIOKerberosClient:
 		kdc_req_body['rtime'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['nonce'] = secrets.randbits(31)
 		if override_etype is None:
-			kdc_req_body['etype'] = self.usercreds.get_supported_enctypes()
+			kdc_req_body['etype'] = self.credential.get_supported_enctypes()
 		else:
 			kdc_req_body['etype'] = override_etype
 
 		pa_data_1 = {}
-		pa_data_1['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
-		pa_data_1['padata-value'] = PA_PAC_REQUEST({'include-pac': True}).dump()
+		if with_pac is True:
+			pa_data_1['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
+			pa_data_1['padata-value'] = PA_PAC_REQUEST({'include-pac': True}).dump()
 		
 		kdc_req = {}
 		kdc_req['pvno'] = krb5_pvno
 		kdc_req['msg-type'] = MESSAGE_TYPE.KRB_AS_REQ.value
-		kdc_req['padata'] = [pa_data_1]
+		if len(pa_data_1) > 0:
+			kdc_req['padata'] = [pa_data_1]
 		kdc_req['req-body'] = KDC_REQ_BODY(kdc_req_body)
 		
 		req = AS_REQ(kdc_req)	
@@ -317,12 +292,12 @@ class AIOKerberosClient:
 
 			#if we want to roast the asrep (tgt rep) part then we dont even have the proper keys to decrypt
 			#so we just return, the asrep can be extracted from this object anyhow
-			if decrypt_tgt == False or self.usercreds.nopreauth is True:
+			if decrypt_tgt == False or self.credential.nopreauth is True:
 				return rep
 
 			self.kerberos_cipher = _enctype_table[rep['enc-part']['etype']]
 			self.kerberos_cipher_type = rep['enc-part']['etype']
-			self.kerberos_key = Key(self.kerberos_cipher.enctype, self.usercreds.get_key_for_enctype(EncryptionType(rep['enc-part']['etype'])))
+			self.kerberos_key = Key(self.kerberos_cipher.enctype, self.credential.get_key_for_enctype(EncryptionType(rep['enc-part']['etype'])))
 			
 		else:
 			if rep.native['error-code'] != KerberosErrorCode.KDC_ERR_PREAUTH_REQUIRED.value:
@@ -331,14 +306,14 @@ class AIOKerberosClient:
 			logger.debug('Got reply from server, asikg to provide auth data')
 			supported_encryption_method = self.select_preferred_encryption_method(rep)
 			
-			rep = await self.do_preauth(supported_encryption_method)
+			rep = await self.do_preauth(supported_encryption_method, with_pac=with_pac)
 			logger.debug('Got valid TGT response from server')
 			rep = rep.native
 			self.kerberos_TGT = rep
 
 
 		
-		if self.usercreds.certificate is not None:
+		if self.credential.certificate is not None:
 			self.kerberos_TGT_encpart, self.kerberos_session_key, self.kerberos_cipher = self.decrypt_asrep_cert(rep)
 			self.kerberos_cipher_type = supported_encryption_method.value
 
@@ -365,29 +340,18 @@ class AIOKerberosClient:
 			
 			return 
 
-	def tgs_from_ccache(self, spn_user:KerberosSPN, override_etype):
+	def tgs_from_ccache(self, spn_user:KerberosSPN):
 		try:
 			if self.ccache is None:
 				raise Exception('No CCACHE file found')
 			
-			for tgs, keystruct in self.ccache.get_all_tgs():
-				ticket_for = ('/'.join(tgs['ticket']['sname']['name-string'])) + '@' + tgs['ticket']['realm']
-				if self.usercreds.ccache_spn_strict_check is True:
-					if ticket_for.upper() == str(spn_user).upper():
-						logger.debug('Found TGS for user %s' % ticket_for)
-						key = Key(keystruct['keytype'], keystruct['keyvalue'])
-						tgs = TGS_REP(tgs).native
-						return tgs, tgs['enc-part'], key, None
-				else:
-					# I hope you know what you are doing at this point...
-					key = Key(keystruct['keytype'], keystruct['keyvalue'])
-					tgs = TGS_REP(tgs).native
-					return tgs, tgs['enc-part'], key, None
-
-			logger.debug('No TGS found for user %s' % ticket_for)
-			raise Exception('No TGS found for user %s' % ticket_for) 
-
+			tgs, keystruct, err = self.ccache.get_tgs(spn_user)
+			if err is not None:
+				raise err
 			
+			key = Key(keystruct['keytype'], keystruct['keyvalue'])
+			tgs = TGS_REP(tgs).native
+			return tgs, tgs['enc-part'], key, None			
 		except Exception as e:
 			return None, None, None, e
 
@@ -401,14 +365,14 @@ class AIOKerberosClient:
 		"""
 		
 		#first, let's check if CCACHE has the correct ticket already
-		tgs, encTGSRepPart, key, err = self.tgs_from_ccache(spn_user, override_etype)
+		tgs, encTGSRepPart, key, err = self.tgs_from_ccache(spn_user)
 		if err is None:
 			return tgs, encTGSRepPart, key
 
 		
 		if self.kerberos_TGT is None:
 			#let's check if CCACHE has a TGT for us
-			_, err = self.tgt_from_ccache(override_etype=override_etype)
+			_, err = self.tgt_from_ccache()
 			if err is not None:
 				raise Exception('No TGT found in CCACHE!')
 
@@ -492,7 +456,7 @@ class AIOKerberosClient:
 			logger.debug('[U2U] TGT is not available! Fetching TGT...')
 			await self.get_TGT()
 
-		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
+		supp_enc = self.credential.get_preferred_enctype(supp_enc_methods)
 		now = datetime.datetime.now(datetime.timezone.utc)
 		authenticator_data = {}
 		authenticator_data['authenticator-vno'] = krb5_pvno
@@ -518,8 +482,8 @@ class AIOKerberosClient:
 		
 		krb_tgs_body = {}
 		krb_tgs_body['kdc-options'] = KDCOptions(set(kdcopts))
-		krb_tgs_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': self.usercreds.username.split('/')})
-		krb_tgs_body['realm'] = self.usercreds.domain.upper()
+		krb_tgs_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': self.credential.username.split('/')})
+		krb_tgs_body['realm'] = self.credential.domain.upper()
 		krb_tgs_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		krb_tgs_body['nonce'] = secrets.randbits(31)
 		krb_tgs_body['etype'] = [23] # dunno why it must be 23?
@@ -560,7 +524,7 @@ class AIOKerberosClient:
 		return tgs, encTGSRepPart, key, decticket
 	
 	#https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/6a8dfc0c-2d32-478a-929f-5f9b1b18a169
-	async def S4U2self(self, user_to_impersonate, spn_user = None, kdcopts = ['forwardable','renewable','canonicalize'], supp_enc_methods = [EncryptionType.DES_CBC_CRC,EncryptionType.DES_CBC_MD4,EncryptionType.DES_CBC_MD5,EncryptionType.DES3_CBC_SHA1,EncryptionType.ARCFOUR_HMAC_MD5,EncryptionType.AES256_CTS_HMAC_SHA1_96,EncryptionType.AES128_CTS_HMAC_SHA1_96]):
+	async def S4U2self(self, user_to_impersonate, spn_user = None, kdcopts = ['forwardable','renewable','canonicalize']):
 		"""
 		user_to_impersonate : KerberosTarget class
 		"""
@@ -569,7 +533,6 @@ class AIOKerberosClient:
 			logger.debug('[S4U2self] TGT is not available! Fetching TGT...')
 			await self.get_TGT()
 		
-		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
 		auth_package_name = 'Kerberos'
 		now = datetime.datetime.now(datetime.timezone.utc)
 		
@@ -634,16 +597,16 @@ class AIOKerberosClient:
 			else:
 				spn_user = spn_user.get_principalname()
 		else:
-			spn_user = self.usercreds.username.split('/')
+			spn_user = self.credential.username.split('/')
 
 		
 		krb_tgs_body = {}
 		krb_tgs_body['kdc-options'] = KDCOptions(set(kdcopts))
 		krb_tgs_body['sname'] = PrincipalName({'name-type': NAME_TYPE.UNKNOWN.value, 'name-string': spn_user})
-		krb_tgs_body['realm'] = self.usercreds.domain.upper()
+		krb_tgs_body['realm'] = self.credential.domain.upper()
 		krb_tgs_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		krb_tgs_body['nonce'] = secrets.randbits(31)
-		krb_tgs_body['etype'] = [supp_enc.value] #selecting according to server's preferences
+		krb_tgs_body['etype'] = [self.kerberos_session_key.enctype] #[supp_enc.value] #selecting according to server's preferences
 		
 		
 		krb_tgs_req = {}
@@ -675,10 +638,9 @@ class AIOKerberosClient:
 		return tgs, encTGSRepPart, key
 		
 	# https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/c920c148-8a9c-42e9-b8e9-db5755cd281b
-	async def S4U2proxy(self, s4uself_ticket, spn_user, supp_enc_methods = [EncryptionType.DES_CBC_CRC,EncryptionType.DES_CBC_MD4,EncryptionType.DES_CBC_MD5,EncryptionType.DES3_CBC_SHA1,EncryptionType.ARCFOUR_HMAC_MD5,EncryptionType.AES256_CTS_HMAC_SHA1_96,EncryptionType.AES128_CTS_HMAC_SHA1_96]):
+	async def S4U2proxy(self, s4uself_ticket, spn_user):
 		logger.debug('[S4U2proxy] Impersonating %s' % '/'.join(spn_user.get_principalname()))
 		now = datetime.datetime.now(datetime.timezone.utc)
-		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
 		
 		pa_pac_opts = {}
 		pa_pac_opts['padata-type'] = int(PADATA_TYPE('PA-PAC-OPTIONS'))
@@ -710,10 +672,10 @@ class AIOKerberosClient:
 		#krb_tgs_body['kdc-options'] = KDCOptions(set(['forwardable','forwarded','renewable','renewable-ok', 'canonicalize']))
 		krb_tgs_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','constrained-delegation', 'canonicalize']))
 		krb_tgs_body['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': spn_user.get_principalname()})
-		krb_tgs_body['realm'] = self.usercreds.domain.upper()
+		krb_tgs_body['realm'] = self.credential.domain.upper()
 		krb_tgs_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		krb_tgs_body['nonce'] = secrets.randbits(31)
-		krb_tgs_body['etype'] = [supp_enc.value] #selecting according to server's preferences
+		krb_tgs_body['etype'] = [self.kerberos_session_key.enctype] #[supp_enc.value] #selecting according to server's preferences
 		krb_tgs_body['additional-tickets'] = [s4uself_ticket]
 		
 		
@@ -745,82 +707,15 @@ class AIOKerberosClient:
 		return tgs, encTGSRepPart, key
 		
 	def construct_apreq(self, tgs, encTGSRepPart, sessionkey, flags = None, seq_number = 0, ap_opts = [], cb_data = None):
-		now = datetime.datetime.now(datetime.timezone.utc)
-		authenticator_data = {}
-		authenticator_data['authenticator-vno'] = krb5_pvno
-		authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
-		authenticator_data['cname'] = self.kerberos_TGT['cname']
-		authenticator_data['cusec'] = now.microsecond
-		authenticator_data['ctime'] = now.replace(microsecond=0)
-		if flags is not None:
-			ac = AuthenticatorChecksum()
-			ac.flags = flags
-
-			ac.channel_binding = b'\x00'*16
-			if cb_data is not None:
-				cb_struct = ChannelBindingsStruct()
-				cb_struct.application_data = cb_data
-				ac.channel_binding = hashlib.md5(cb_struct.to_bytes()).digest()
-			
-			chksum = {}
-			chksum['cksumtype'] = 0x8003
-			chksum['checksum'] = ac.to_bytes()
-			
-			authenticator_data['cksum'] = Checksum(chksum)
-			authenticator_data['seq-number'] = seq_number
-		
-		cipher = _enctype_table[encTGSRepPart['key']['keytype']]
-		authenticator_data_enc = cipher.encrypt(sessionkey, 11, Authenticator(authenticator_data).dump(), None)
-		
-		ap_req = {}
-		ap_req['pvno'] = krb5_pvno
-		ap_req['msg-type'] = MESSAGE_TYPE.KRB_AP_REQ.value
-		ap_req['ticket'] = Ticket(tgs['ticket'])
-		ap_req['ap-options'] = APOptions(set(ap_opts))
-		ap_req['authenticator'] = EncryptedData({'etype': self.kerberos_cipher_type, 'cipher': authenticator_data_enc})
-
-		return AP_REQ(ap_req).dump()
-		
-	@staticmethod
-	def construct_apreq_from_ticket(ticket_data, sessionkey, crealm, cname, flags = None, seq_number = 0, ap_opts = [], cb_data = None):
-		"""
-		ticket: bytes of Ticket
-		"""
-		now = datetime.datetime.now(datetime.timezone.utc)
-		authenticator_data = {}
-		authenticator_data['authenticator-vno'] = krb5_pvno
-		authenticator_data['crealm'] = Realm(crealm)
-		authenticator_data['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [cname]})
-		authenticator_data['cusec'] = now.microsecond
-		authenticator_data['ctime'] = now.replace(microsecond=0)
-		if flags is not None:
-			
-			ac = AuthenticatorChecksum()
-			ac.flags = flags
-			ac.channel_binding = b'\x00'*16
-			if cb_data is not None:
-				cb_struct = ChannelBindingsStruct()
-				cb_struct.application_data = cb_data
-				ac.channel_binding = hashlib.md5(cb_struct.to_bytes()).digest()
-			
-			chksum = {}
-			chksum['cksumtype'] = 0x8003
-			chksum['checksum'] = ac.to_bytes()
-			
-			authenticator_data['cksum'] = Checksum(chksum)
-			authenticator_data['seq-number'] = seq_number
-		
-		cipher = _enctype_table[sessionkey.enctype]
-		authenticator_data_enc = cipher.encrypt(sessionkey, 11, Authenticator(authenticator_data).dump(), None)
-		
-		ap_req = {}
-		ap_req['pvno'] = krb5_pvno
-		ap_req['msg-type'] = MESSAGE_TYPE.KRB_AP_REQ.value
-		ap_req['ticket'] = Ticket.load(ticket_data)
-		ap_req['ap-options'] = APOptions(set(ap_opts))
-		ap_req['authenticator'] = EncryptedData({'etype': sessionkey.enctype, 'cipher': authenticator_data_enc})
-
-		return AP_REQ(ap_req).dump()
+		return construct_apreq_from_tgs_tgt(
+			tgs, 
+			sessionkey, 
+			self.kerberos_TGT, 
+			flags = flags, 
+			seq_number = seq_number, 
+			ap_opts = ap_opts, 
+			cb_data = cb_data
+		)
 		
 	async def getST(self, target_user, service_spn):
 		tgs, encTGSRepPart, key  = await self.S4U2self(target_user)
@@ -861,10 +756,10 @@ class AIOKerberosClient:
 		pubkey = int(''.join(['1'] + [str(x) for x in authdata['subjectPublicKey']]), 2)		
 
 		pubkey = int.from_bytes(core.BitString(authdata['subjectPublicKey']).dump()[7:], 'big', signed = False) # !!!!!!!!!!!!! TODO: CHECKTHIS!!!
-		shared_key = self.usercreds.dhparams.exchange(pubkey)
+		shared_key = self.credential.dhparams.exchange(pubkey)
 		
 		server_nonce = pkasrep['serverDHNonce']
-		fullKey = shared_key + self.usercreds.dhparams.dh_nonce + server_nonce
+		fullKey = shared_key + self.credential.dhparams.dh_nonce + server_nonce
 
 		etype = as_rep['enc-part']['etype']
 		cipher = _enctype_table[etype]
@@ -884,43 +779,3 @@ class AIOKerberosClient:
 		cipher = _enctype_table[ int(encasrep['key']['keytype'])]
 		session_key = Key(cipher.enctype, encasrep['key']['keyvalue'])
 		return encasrep, session_key, cipher
-
-
-	def get_NT_from_PAC(self, decticket:EncTicketPart, truncated_keydata=None):
-		from minikerberos.protocol.external.rpcrt import TypeSerialization1
-		from minikerberos.protocol.external.pac import PACTYPE, PAC_INFO_BUFFER, \
-			PAC_CREDENTIAL_INFO, PAC_CREDENTIAL_DATA, NTLM_SUPPLEMENTAL_CREDENTIAL
-
-		
-		adIfRelevant = AD_IF_RELEVANT.load(decticket['authorization-data'][0]['ad-data'])		
-		if truncated_keydata is None:
-			truncated_keydata = self.pkinit_tkey
-		if truncated_keydata is None:
-			raise Exception("Missing tkey! Is this a PKINIT session?")
-		key = Key(18, truncated_keydata)
-		pacType = PACTYPE(adIfRelevant.native[0]['ad-data'])
-		buff = pacType['Buffers']
-		creds = []
-		for bufferN in range(pacType['cBuffers']):
-			infoBuffer = PAC_INFO_BUFFER(buff)
-			data = pacType['Buffers'][infoBuffer['Offset']-8:][:infoBuffer['cbBufferSize']]
-			logger.debug("TYPE 0x%x" % infoBuffer['ulType'])
-			if infoBuffer['ulType'] == 2:
-				credinfo = PAC_CREDENTIAL_INFO(data)
-				newCipher = _enctype_table[credinfo['EncryptionType']]
-
-				out = newCipher.decrypt(key, 16, credinfo['SerializedData'])
-				type1 = TypeSerialization1(out)
-				# I'm skipping here 4 bytes with its the ReferentID for the pointer
-				newdata = out[len(type1)+4:]
-				pcc = PAC_CREDENTIAL_DATA(newdata)
-				for cred in pcc['Credentials']:
-					credstruct = NTLM_SUPPLEMENTAL_CREDENTIAL(b''.join(cred['Credentials']))
-					if credstruct['NtPassword'] != b'\x00'*16:
-						creds.append(('NT', credstruct['NtPassword'].hex()))
-					if credstruct['LmPassword'] != b'\x00'*16:
-						creds.append(('LM', credstruct['LmPassword'].hex()))
-
-			buff = buff[len(infoBuffer):]
-		
-		return creds

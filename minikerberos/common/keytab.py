@@ -22,6 +22,7 @@ class KeytabPrincipal:
 
     @staticmethod
     def from_asn1(principal, realm):
+        """Returns a principal from asn1 and realm"""
         p = KeytabPrincipal()
         p.name_type = principal['name-type']
         p.num_components = len(principal['name-string'])
@@ -32,7 +33,8 @@ class KeytabPrincipal:
         return p
 
     @staticmethod
-    def dummy():
+    def empty():
+        """Returns a dummy principal"""
         p = KeytabPrincipal()
         p.name_type = 1
         p.num_components = 1
@@ -43,14 +45,21 @@ class KeytabPrincipal:
         return p
 
     def to_string(self):
+        """Returns the principal as a string"""
         return '-'.join([c.to_string() for c in self.components])
+    
+    def to_pname(self):
+        """Returns the principal as a string in pname format"""
+        return '/'.join(list(map(lambda c: c.to_string(), self.components)))
 
     def to_asn1(self):
+        """Returns the principal as a tuple of asn1 and realm"""
         t = {'name-type': self.name_type, 'name-string': [name.to_string() for name in self.components]}
         return t, self.realm.to_string()
 
     @staticmethod
     def from_buffer(buffer):
+        """Parses the principal from the buffer"""
         p = KeytabPrincipal()
         p.num_components = int.from_bytes(buffer.read(2), byteorder='big', signed=False)
         p.realm = KeytabOctetString.parse(buffer)
@@ -60,6 +69,7 @@ class KeytabPrincipal:
         return p
 
     def to_bytes(self):
+        """Returns the principal as a byte array"""
         t = len(self.components).to_bytes(2, byteorder='big', signed=False)
         t += self.realm.to_bytes()
         for com in self.components:
@@ -69,29 +79,29 @@ class KeytabPrincipal:
 
 
 class KeytabOctetString:
-    """
-    Same as CCACHEOctetString
-    """
-
     def __init__(self):
         self.length:int = None
         self.data:bytes = None
 
     @staticmethod
     def empty() -> KeytabOctetString:
+        """Creates an empty octet string"""
         o = KeytabOctetString()
         o.length = 0
         o.data = b''
         return o
 
     def to_asn1(self) -> bytes:
+        """Returns the octet string as a byte array"""
         return self.data
 
     def to_string(self) -> str:
+        """Returns the octet string as a string"""
         return self.data.decode()
     
     @staticmethod
     def from_string(data) -> KeytabOctetString:
+        """Creates an octet string from a string"""
         o = KeytabOctetString()
         o.data = data.encode()
         o.length = len(o.data)
@@ -99,6 +109,7 @@ class KeytabOctetString:
 
     @staticmethod
     def from_asn1(data) -> KeytabOctetString:
+        """Creates an octet string from an asn1 object"""
         o = KeytabOctetString()
         o.length = len(data)
         if isinstance(data, str):
@@ -109,12 +120,14 @@ class KeytabOctetString:
 
     @staticmethod
     def parse(reader: io.BytesIO) -> KeytabOctetString:
+        """Parses the octet string from the reader"""
         o = KeytabOctetString()
         o.length = int.from_bytes(reader.read(2), byteorder='big', signed=False)
         o.data = reader.read(o.length)
         return o
 
     def to_bytes(self) -> bytes:
+        """Returns the octet string as a byte array"""
         if isinstance(self.data, str):
             self.data = self.data.encode()
             self.length = len(self.data)
@@ -133,6 +146,7 @@ class KeytabEntry:
         self.key_contents:bytes = None
 
     def to_bytes(self) -> bytes:
+        """Returns the entry as a byte array"""
         t = self.principal.to_bytes()
         t += self.timestamp.to_bytes(4, 'big', signed=False)
         t += self.key_version.to_bytes(1, 'big', signed=False)
@@ -140,13 +154,19 @@ class KeytabEntry:
         t += self.key_length.to_bytes(2, 'big', signed=False)
         t += self.key_contents
         return t
+    
+    def to_pname(self):
+        """Returns the principal name of the entry"""
+        return self.principal.to_pname()
 
     @staticmethod
     def from_bytes(data) -> KeytabEntry:
+        """Reads a KeytabEntry from a byte array"""
         return KeytabEntry.from_buffer(io.BytesIO(data))
 
     @staticmethod
     def from_buffer(buffer:io.BytesIO) -> KeytabEntry:
+        """Reads a KeytabEntry from a buffer"""
         ke = KeytabEntry()
         ke.principal = KeytabPrincipal.from_buffer(buffer)
         ke.timestamp = int.from_bytes(buffer.read(4), byteorder='big', signed=False)
@@ -175,6 +195,7 @@ class Keytab:
         self.entries:List[KeytabEntry] = []
 
     def to_bytes(self) -> bytes:
+        """Returns the keytab as a byte array"""
         t = self.krb5.to_bytes(1, 'big', signed=False)
         t += self.version.to_bytes(1, 'big', signed=False)
         for e in self.entries:
@@ -183,13 +204,25 @@ class Keytab:
             t += data
 
         return t
+    
+    def get_pnames(self):
+        """Returns all princial names available in the kaytab"""
+        return [e.principal.to_pname() for e in self.entries]
 
     @staticmethod
-    def from_bytes(data):
+    def from_bytes(data:bytes):
+        """Reads a keytab from a byte array"""
         return Keytab.from_buffer(io.BytesIO(data))
+    
+    @staticmethod
+    def from_file(filename:str):
+        """Reads a keytab from a file"""
+        with open(filename, 'rb') as f:
+            return Keytab.from_buffer(f)
 
     @staticmethod
     def from_buffer(buffer:io.BytesIO) -> Keytab:
+        """Reads a keytab from a buffer"""
         pos = buffer.tell()
         buffer.seek(0, 2)
         buffer_size = buffer.tell() - pos
@@ -215,6 +248,11 @@ class Keytab:
 
         return k
 
+    def to_file(self, filename:str):
+        """Writes the keytab to a file"""
+        with open(filename, 'wb') as f:
+            f.write(self.to_bytes())
+
     def __repr__(self):
         t = '=== Keytab ===\r\n'
         t += 'Version : %s\r\n' % self.version
@@ -222,18 +260,3 @@ class Keytab:
             t += repr(e)
 
         return t
-
-
-if __name__ == '__main__':
-    filename = 'Z:\\VMShared\\app1.keytab'
-    with open(filename, 'rb') as f:
-        data = f.read()
-
-    k = Keytab.from_bytes(data)
-    print(repr(k))
-
-    print(k.to_bytes())
-    with open('test.keytab', 'wb') as o:
-        o.write(k.to_bytes())
-
-    assert data == k.to_bytes()

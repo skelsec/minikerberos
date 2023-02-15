@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-#
-# Author:
-#  Tamas Jos (@skelsec)
-#
-
 from minikerberos import logger
 from minikerberos.protocol.asn1_structs import KerberosResponse
 from minikerberos.common.target import KerberosTarget

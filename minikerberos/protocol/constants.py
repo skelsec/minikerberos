@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-#
-# Author:
-#  Tamas Jos (@skelsec)
-#
-
 import enum
 
 class NAME_TYPE(enum.Enum):

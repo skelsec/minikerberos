@@ -1,11 +1,18 @@
-#!/usr/bin/env python3
-#
-# Author:
-#  Tamas Jos (@skelsec)
-#
 import os
 import logging
 from minikerberos.common.ccache import CCACHE
+
+def kirbi2ccache(kirbi, ccache):
+	abs_path = os.path.abspath(kirbi)
+	if os.path.isdir(abs_path):	
+		logging.info('Parsing kirbi files in directory %s' % abs_path)
+		cc = CCACHE.from_kirbidir(abs_path)
+		cc.to_file(ccache)
+		
+	else:
+		logging.info('Parsing kirbi file %s' % abs_path)
+		cc = CCACHE.from_kirbifile(abs_path)
+		cc.to_file(ccache)
 
 def main():
 	import argparse
@@ -24,16 +31,7 @@ def main():
 	else:
 		logging.basicConfig(level=1)
 	
-	abs_path = os.path.abspath(args.kirbi)
-	if os.path.isdir(abs_path):	
-		logging.info('Parsing kirbi files in directory %s' % abs_path)
-		cc = CCACHE.from_kirbidir(abs_path)
-		cc.to_file(args.ccache)
-		
-	else:
-		logging.info('Parsing kirbi file %s' % abs_path)
-		cc = CCACHE.from_kirbifile(abs_path)
-		cc.to_file(args.ccache)
+	kirbi2ccache(args.kirbi, args.ccache)
 		
 	logging.info('Done!')
 

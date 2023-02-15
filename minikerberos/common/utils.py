@@ -1,6 +1,7 @@
 
 import datetime
-from minikerberos.protocol.asn1_structs import KRB_CRED, KrbCredInfo, EncKrbCredPart, EncryptedData
+from minikerberos.protocol.asn1_structs import KRB_CRED, KrbCredInfo, EncKrbCredPart, EncryptedData, KRBCRED
+import base64
 
 def print_table(lines, separate_head=True):
 	"""Prints a formatted table given a 2 dimensional array"""
@@ -65,32 +66,3 @@ def TGTTicket2hashcat(res):
 	tgt_encrypted_data2    = res['enc-part']['cipher'][16:]
 	
 	return '$krb5asrep$%s$%s@%s:%s$%s' % (tgt_encryption_type,tgt_name_string, tgt_realm, tgt_checksum.hex(), tgt_encrypted_data2.hex())
-
-def tgt_to_kirbi(tgs, encTGSRepPart):
-	#encTGSRepPart is already decrypted at this point
-	ci = {}
-	ci['key'] = encTGSRepPart['key']
-	ci['prealm'] = tgs['crealm']
-	ci['pname'] = tgs['cname']
-	ci['flags'] = encTGSRepPart['flags']
-	ci['authtime'] = encTGSRepPart['authtime']
-	ci['starttime'] = encTGSRepPart['starttime']
-	ci['endtime'] = encTGSRepPart['endtime']
-	ci['renew-till'] = encTGSRepPart['renew-till']
-	ci['srealm'] = encTGSRepPart['srealm']
-	ci['sname'] = encTGSRepPart['sname']
-
-	ti = {}
-	ti['ticket-info'] = [KrbCredInfo(ci)]
-
-	te = {}
-	te['etype']  = 0
-	te['cipher'] = EncKrbCredPart(ti).dump()
-
-	t = {}
-	t['pvno'] = 5
-	t['msg-type'] = 22
-	t['enc-part'] = EncryptedData(te)
-	t['tickets'] = [tgs['ticket']]
-
-	return KRB_CRED(t)

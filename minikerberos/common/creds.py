@@ -1,13 +1,9 @@
-#!/usr/bin/env python3
-#
-# Author:
-#  Tamas Jos (@skelsec)
-#
 from __future__ import annotations
 import getpass
 import collections
 import base64
 import platform
+import copy
 from typing import List
 
 
@@ -18,13 +14,14 @@ from minikerberos.protocol.encryption import string_to_key, Enctype
 from minikerberos.protocol.constants import EncryptionType
 from minikerberos.common.ccache import CCACHE
 from minikerberos.common.keytab import Keytab
+from minikerberos.common.kirbi import Kirbi
 from asn1crypto import cms
 from asn1crypto import algos
 from minikerberos.protocol.dirtydh import DirtyDH
 from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
 from oscrypto.keys import parse_pkcs12, parse_certificate, parse_private
 
-def get_encoded_data(data:bytes|str, encoding = 'file') -> bytes:
+def get_encoded_data(data:bytes or str, encoding = 'file') -> bytes:
 	if encoding == 'file':
 		with open(data, 'rb') as kf:
 			return kf.read()
@@ -60,8 +57,9 @@ class KerberosCredential:
 		self.certstore_name:str = None
 		self.dhparams:DirtyDH = None
 		self.ccache:CCACHE = None
-		self.ccache_spn_strict_check:bool = True
+		self.ccache_spn_strict_check:bool = False
 		self.nopreauth = False
+		self.override_etypes:List[EncryptionType] = []
 
 	def get_preferred_enctype(self, server_enctypes:List[EncryptionType]) -> EncryptionType:
 		client_enctypes = self.get_supported_enctypes(as_int=False)
@@ -111,7 +109,7 @@ class KerberosCredential:
 				raise Exception('There is no key for RC4 encryption')
 		elif etype == EncryptionType.DES3_CBC_SHA1:
 			if self.kerberos_key_des3:
-				return bytes.fromhex(self.kerberos_key_des)
+				return bytes.fromhex(self.kerberos_key_des3)
 			elif self.password:
 				if not salt:
 					salt = (self.domain.upper() + self.username).encode()
@@ -127,7 +125,7 @@ class KerberosCredential:
 					salt = (self.domain.upper() + self.username).encode()
 				return string_to_key(Enctype.DES_MD5, self.password, salt).contents
 			else:
-				raise Exception('There is no key for DES3 encryption')
+				raise Exception('There is no key for DES encryption')
 		
 		elif etype == EncryptionType.ARCFOUR_MD4:
 			if self.kerberos_key_rc4:
@@ -151,42 +149,49 @@ class KerberosCredential:
 		Returns a list of all EncryptionTypes this credentials can use for authentication
 		"""
 		supp_enctypes = collections.OrderedDict()
-		if self.nopreauth is True:
-			supp_enctypes[EncryptionType.DES_CBC_CRC] = 1
-			supp_enctypes[EncryptionType.DES_CBC_MD4] = 1
-			supp_enctypes[EncryptionType.DES_CBC_MD5] = 1
-			supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
-			supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
-			supp_enctypes[EncryptionType.ARCFOUR_MD4] = 1
-			supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
-			supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
-
-		if self.kerberos_key_aes_256:
-			supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
-		if self.kerberos_key_aes_128:
-			supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
-
-		if self.password:
-			supp_enctypes[EncryptionType.DES_CBC_CRC] = 1
-			supp_enctypes[EncryptionType.DES_CBC_MD4] = 1
-			supp_enctypes[EncryptionType.DES_CBC_MD5] = 1
-			supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
-			supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
-			supp_enctypes[EncryptionType.ARCFOUR_MD4] = 1
-			supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
-			supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
-
-		if self.password or self.nt_hash or self.kerberos_key_rc4:
-			supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
-			supp_enctypes[EncryptionType.ARCFOUR_MD4] = 1
-
-		if self.kerberos_key_des:
-			supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
+		if self.override_etypes is not None and len(self.override_etypes) > 0:
+			for etype in self.override_etypes:
+				if isinstance(etype, int):
+					etype = EncryptionType(etype)
+				supp_enctypes[etype] = 1
 		
-		if self.certificate is not None:
-			supp_enctypes = collections.OrderedDict()
-			supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
-			supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
+		else:
+			if self.nopreauth is True:
+				supp_enctypes[EncryptionType.DES_CBC_CRC] = 1
+				supp_enctypes[EncryptionType.DES_CBC_MD4] = 1
+				supp_enctypes[EncryptionType.DES_CBC_MD5] = 1
+				supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
+				supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
+				supp_enctypes[EncryptionType.ARCFOUR_MD4] = 1
+				supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
+				supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
+
+			if self.kerberos_key_aes_256:
+				supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
+			if self.kerberos_key_aes_128:
+				supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
+
+			if self.password:
+				supp_enctypes[EncryptionType.DES_CBC_CRC] = 1
+				supp_enctypes[EncryptionType.DES_CBC_MD4] = 1
+				supp_enctypes[EncryptionType.DES_CBC_MD5] = 1
+				supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
+				supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
+				supp_enctypes[EncryptionType.ARCFOUR_MD4] = 1
+				supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
+				supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
+
+			if self.password or self.nt_hash or self.kerberos_key_rc4:
+				supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
+				supp_enctypes[EncryptionType.ARCFOUR_MD4] = 1
+
+			if self.kerberos_key_des:
+				supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
+			
+			if self.certificate is not None:
+				supp_enctypes = collections.OrderedDict()
+				supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
+				supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
 
 
 		if as_int == True:
@@ -215,11 +220,15 @@ class KerberosCredential:
 	@staticmethod
 	def from_kirbi(keytab_file_path: str, principal: str = None, realm: str = None, encoding = 'file') -> KerberosCredential:
 		"""Returns a kerberos credential object from .kirbi file"""
-		data = get_encoded_data(keytab_file_path, encoding=encoding)
+		if encoding != 'kirbi':
+			data = get_encoded_data(keytab_file_path, encoding=encoding)
+			kirbi = Kirbi.from_bytes(data)
+		else:
+			kirbi = copy.deepcopy(keytab_file_path)
 		cred = KerberosCredential()
-		cred.username = principal
-		cred.domain = realm
-		cred.ccache = CCACHE.from_kirbi(data)
+		cred.username = principal if principal is not None else kirbi.get_username()
+		cred.domain = realm if realm is not None else kirbi.kirbiobj.native['tickets'][0]['realm']
+		cred.ccache = CCACHE.from_kirbi(kirbi)
 		cred.ccache_spn_strict_check = False
 		return cred
 	
@@ -237,8 +246,13 @@ class KerberosCredential:
 		return KerberosCredential.from_kirbi(keytab_file_path, principal, realm)
 	
 	@staticmethod
-	def from_keytab_string(keytabdata: str | bytes, principal: str, realm: str) -> KerberosCredential:
+	def from_keytab_string(keytabdata: str or bytes, principal: str, realm: str) -> KerberosCredential:
 		cred = KerberosCredential()
+		if principal is None:
+			raise Exception('Principal is required')
+		if realm is None:
+			raise Exception('Realm is required')
+		
 		cred.username = principal
 		cred.domain = realm
 
@@ -246,39 +260,37 @@ class KerberosCredential:
 			keytabdata = base64.b64decode(keytabdata.replace(' ','').replace('\r','').replace('\n','').replace('\t','').replace('','').encode())
 		
 		keytab = Keytab.from_bytes(keytabdata)
+		if len(keytab.entries) == 0:
+			raise Exception('No entries found in keytab')
+		if len(keytab.entries) == 1:
+			keytab_entry = keytab.entries[0]
+		else:
+			for entry in keytab.entries:
+				if entry.principal.to_pname().lower().find(principal.lower()) != -1:
+					keytab_entry = entry
+					break
+			else:
+				# No match found
+				keytab_entry = keytab.entries[0]
 
-		for keytab_entry in keytab.entries:
-			if realm == keytab_entry.principal.realm.to_string():
-				keytab_principal = '/'.join(list(map(lambda c: c.to_string(), keytab_entry.principal.components)))
-				if principal == keytab_principal:
-					enctype = None
-					if Enctype.AES256 == keytab_entry.enctype:
-						enctype = KerberosSecretType.AES256
-					elif Enctype.AES128 == keytab_entry.enctype:
-						enctype = KerberosSecretType.AES128
-					elif Enctype.DES3 == keytab_entry.enctype:
-						enctype = KerberosSecretType.DES3
-					elif Enctype.DES_CRC == keytab_entry.enctype:
-						enctype = KerberosSecretType.DES
-					elif Enctype.DES_MD4 == keytab_entry.enctype:
-						enctype = KerberosSecretType.DES
-					elif Enctype.DES_MD5 == keytab_entry.enctype:
-						enctype = KerberosSecretType.DES
-					elif Enctype.RC4 == keytab_entry.enctype:
-						enctype = KerberosSecretType.RC4
-					if enctype:
-						cred.add_secret(enctype, keytab_entry.key_contents.hex())
+		if Enctype.AES256 == keytab_entry.enctype:
+			enctype = KerberosSecretType.AES256
+		elif Enctype.AES128 == keytab_entry.enctype:
+			enctype = KerberosSecretType.AES128
+		elif Enctype.DES3 == keytab_entry.enctype:
+			enctype = KerberosSecretType.DES3
+		elif Enctype.DES_CRC == keytab_entry.enctype:
+			enctype = KerberosSecretType.DES
+		elif Enctype.DES_MD4 == keytab_entry.enctype:
+			enctype = KerberosSecretType.DES
+		elif Enctype.DES_MD5 == keytab_entry.enctype:
+			enctype = KerberosSecretType.DES
+		elif Enctype.RC4 == keytab_entry.enctype:
+			enctype = KerberosSecretType.RC4
+		if enctype:
+			cred.add_secret(enctype, keytab_entry.key_contents.hex())
 		
 		return cred
-
-	@staticmethod
-	def from_ccache_file(filepath, principal: str = None, realm: str = None) -> KerberosCredential:
-		"""Depricated! Use from_ccache with proper encoding instead!"""
-		k = KerberosCredential()
-		k.username = principal
-		k.domain = realm
-		k.ccache = CCACHE.from_file(filepath)
-		return k
 
 	def set_user_and_domain_from_cert(self, username:str = None, domain:str = None):
 		"""
@@ -301,7 +313,7 @@ class KerberosCredential:
 				raise Exception('Could\'t find proper domain name in the certificate! Please set it manually!')
 
 	@staticmethod
-	def from_pem_data(certdata: str|bytes, keydata:str|bytes, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
+	def from_pem_data(certdata: str or bytes, keydata:str or bytes, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
 		if isinstance(certdata, str):
 			certdata = base64.b64decode(certdata.replace(' ','').replace('\r','').replace('\n','').replace('\t',''))
 		if isinstance(keydata, str):
@@ -315,6 +327,7 @@ class KerberosCredential:
 
 	@staticmethod
 	def from_pem_file(certpath:str, keypath: str, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
+		
 		with open(certpath, 'rb') as f:
 			certdata = f.read()
 
@@ -343,7 +356,7 @@ class KerberosCredential:
 		return k
 
 	@staticmethod
-	def from_pfx_string(data: str|bytes, password:str, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
+	def from_pfx_string(data: str or bytes, password:str, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
 		k = KerberosCredential()
 		if password is None:
 			password = b''
@@ -474,22 +487,27 @@ class KerberosCredential:
 		elif st == KerberosSecretType.CCACHE:
 			self.ccache = CCACHE.from_file(secret)
 
+	@staticmethod
+	def from_tgt(tgt, override_realm = None, override_etypes:List[int] = [17,18,23]):
+		"""Returns a new KerberosCredential object with user matching the TGT"""
+		new_cred = KerberosCredential()
+		new_cred.username = tgt['cname']['name-string'][0]
+		if len(tgt['cname']['name-string']) > 1:
+			new_cred.domain = tgt['cname']['name-string'][1]
+		new_cred.domain = tgt['crealm']
+		if override_realm is not None:
+			new_cred.domain = override_realm
+		if override_etypes is not None:
+			for etype in override_etypes:
+				new_cred.override_etypes.append(EncryptionType(etype))
+		return new_cred
+
 	def __str__(self):
 		t = '===KerberosCredential===\r\n'
-		t += 'username: %s\r\n' % self.username
-		t += 'domain: %s\r\n' % self.domain
-		t += 'password: %s\r\n' % self.password
-		t += 'nt_hash: %s\r\n' % self.nt_hash
-		t += 'lm_hash: %s\r\n' % self.lm_hash
-		if self.kerberos_key_aes_256:
-			t += 'kerberos_key_aes_256: %s\r\n' % self.kerberos_key_aes_256
-		if self.kerberos_key_aes_128:
-			t += 'kerberos_key_aes_128: %s\r\n' % self.kerberos_key_aes_128
-		if self.kerberos_key_des:
-			t += 'kerberos_key_des: %s\r\n' % self.kerberos_key_des
-		if self.kerberos_key_rc4:
-			t += 'kerberos_key_rc4: %s\r\n' % self.kerberos_key_rc4
-		if self.kerberos_key_des3:
-			t += 'kerberos_key_des3: %s\r\n' % self.kerberos_key_des3
+		for k in self.__dict__:
+			if isinstance(self.__dict__[k], list):
+				t += '%s: %s\r\n' % (k, ','.join([str(x) for x in self.__dict__[k]]))
+			else:
+				t += '%s: %s\r\n' % (k, self.__dict__[k])
 		return t
 		

