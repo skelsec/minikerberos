@@ -696,6 +696,11 @@ class Key(object):
 		self.enctype = enctype
 		self.contents = contents
 
+	def __str__(self):
+		temp = '<EMPTY>'
+		if self.contents is not None:
+			temp = self.contents.hex()
+		return 'Key(%d, %s)' % (self.enctype, temp)
 
 def random_to_key(enctype, seed):
 	e = _get_enctype_profile(enctype)
@@ -717,7 +722,7 @@ def encrypt(key, keyusage, plaintext, confounder=None):
 
 
 def decrypt(key, keyusage, ciphertext):
-	# Throw InvalidChecksum on checksum failure.  Throw ValueError on
+	# Throw InvalidChecksum on checksum failure. Throw ValueError on
 	# invalid key enctype or malformed ciphertext.
 	e = _get_enctype_profile(key.enctype)
 	return e.decrypt(key, keyusage, ciphertext)

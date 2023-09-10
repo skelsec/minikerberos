@@ -355,7 +355,7 @@ class AIOKerberosClient:
 		except Exception as e:
 			return None, None, None, e
 
-	async def get_TGS(self, spn_user:KerberosSPN, override_etype = None, is_linux = False):
+	async def get_TGS(self, spn_user:KerberosSPN, override_etype = None, is_linux = False, flags = ['forwardable','renewable','renewable_ok', 'canonicalize']):
 		"""
 		Requests a TGS ticket for the specified user.
 		Retruns the TGS ticket, end the decrpyted encTGSRepPart.
@@ -380,7 +380,7 @@ class AIOKerberosClient:
 		logger.debug('Constructing TGS request for user %s' % spn_user.get_formatted_pname())
 		now = datetime.datetime.now(datetime.timezone.utc)
 		kdc_req_body = {}
-		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','renewable_ok', 'canonicalize']))
+		kdc_req_body['kdc-options'] = KDCOptions(set(flags))
 		kdc_req_body['realm'] = spn_user.domain.upper()
 		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': spn_user.get_principalname()})
 		kdc_req_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
@@ -779,3 +779,31 @@ class AIOKerberosClient:
 		cipher = _enctype_table[ int(encasrep['key']['keytype'])]
 		session_key = Key(cipher.enctype, encasrep['key']['keyvalue'])
 		return encasrep, session_key, cipher
+	
+	async def get_referral_ticket(self, target_domain, target_ip = None):
+		"""Cross domain TGT referral"""
+		"""If target_ip is not set, the target domain will be used as the hostname for the newly created connection"""
+		from minikerberos.common.factory import KerberosClientFactory
+		from minikerberos.common.kirbi import Kirbi
+
+		crossrealm_spn = KerberosSPN()
+		crossrealm_spn.username = target_domain
+		crossrealm_spn.service = 'krbtgt'
+		crossrealm_spn.domain = self.credential.domain.upper()
+
+		await self.get_TGT()
+		logger.debug('Getting TGS for otherdomain krbtgt')
+		tgs, encpart, key = await self.get_TGS(crossrealm_spn)
+		logger.debug('Got referral ticket!')
+
+
+		kirbi = Kirbi.from_ticketdata(tgs, encpart)
+
+		target_addr = target_domain
+		if target_ip is not None:
+			target_addr = target_ip
+		newt = self.target.get_newtarget(target_addr)
+		newc = KerberosCredential.from_kirbi(kirbi, encoding='kirbi')
+		new_factory = KerberosClientFactory(newt, newc, newt.proxies)
+
+		return tgs, encpart, key, new_factory
