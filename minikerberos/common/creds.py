@@ -5,6 +5,7 @@ import base64
 import platform
 import copy
 from typing import List
+import os
 
 
 from unicrypto import hashlib
@@ -210,6 +211,11 @@ class KerberosCredential:
 	@staticmethod
 	def from_ccache(data, principal: str = None, realm: str = None, encoding = 'file') -> KerberosCredential:
 		"""Returns a kerberos credential object with CCACHE database"""
+		if data is None:
+			ccache_path = os.environ.get('KRB5CCNAME')
+			if ccache_path is None:
+				raise Exception('No CCACHE data or path provided!')
+			data = ccache_path
 		data = get_encoded_data(data, encoding=encoding)
 		k = KerberosCredential()
 		k.username = principal

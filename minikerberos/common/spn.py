@@ -38,7 +38,7 @@ class KerberosSPN:
 			kt.service, kt.username = t.split('/')
 		else:
 			if s.find('@') != -1:
-				kt.username, kt.domain = s.split('@')
+				kt.username, kt.domain = s.rsplit('@', 1)
 			else:
 				kt.username = s
 				if override_realm is None or override_realm == '':
