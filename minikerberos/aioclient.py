@@ -3,6 +3,8 @@ from unicrypto import hashlib
 import collections
 import datetime
 import secrets
+import os
+import io
 from typing import List
 
 from minikerberos import logger
@@ -12,14 +14,17 @@ from minikerberos.protocol.asn1_structs import METHOD_DATA, ETYPE_INFO, ETYPE_IN
 	PADATA_TYPE, PA_PAC_REQUEST, PA_ENC_TS_ENC, EncryptedData, krb5_pvno, KDC_REQ_BODY, \
 	AS_REQ, TGS_REP, KDCOptions, PrincipalName, EncASRepPart, EncTGSRepPart, PrincipalName, Realm, \
 	Checksum, APOptions, Authenticator, Ticket, AP_REQ, TGS_REQ, CKSUMTYPE, \
-	PA_FOR_USER_ENC, PA_PAC_OPTIONS, PA_PAC_OPTIONSTypes, EncTicketPart
+	PA_FOR_USER_ENC, PA_PAC_OPTIONS, PA_PAC_OPTIONSTypes, EncTicketPart, \
+	ChangePasswdDataMS, EncryptionKey, EncKrbPrivPart, HostAddress, KRB_PRIV,\
+	AP_REP
 
+from minikerberos.protocol.rfc3244 import KRB5ChangePassword, KRB5CHPWReply, KRB5CHPWResultCode
 from minikerberos.protocol.errors import KerberosErrorCode, KerberosError
 from minikerberos.protocol.encryption import Key, _enctype_table, _HMACMD5, Enctype, _checksum_table
 from minikerberos.protocol.constants import PaDataType, EncryptionType, NAME_TYPE, MESSAGE_TYPE
 from minikerberos.protocol.structures import AuthenticatorChecksum
 from minikerberos.gssapi.gssapi import GSSAPIFlags
-from minikerberos.network.aioclientsocket import AIOKerberosClientSocket
+from minikerberos.network.aioclientsocket import AIOKerberosClientSocket, AIOKerberosPWChangeClientSocket
 
 from minikerberos.common.creds import KerberosCredential
 from minikerberos.common.target import KerberosTarget
@@ -807,3 +812,77 @@ class AIOKerberosClient:
 		new_factory = KerberosClientFactory(newt, newc, newt.proxies)
 
 		return tgs, encpart, key, new_factory
+	
+	async def change_password(self, new_password:str, subkey = None, targetuser:str = None, targetrealm:str = None, hostname:str ='localhost') -> KRB5CHPWReply:
+		"""
+		Changes the password of the current user
+		"""
+		if not self.kerberos_TGT:
+			logger.debug('[ChangePassword] TGT is not available! Fetching TGT...')
+			await self.get_TGT()
+		
+		if subkey is None:
+			subkeydata = os.urandom(self.kerberos_cipher.keysize)
+			subkey = Key(self.kerberos_cipher.enctype, subkeydata)
+
+		now = datetime.datetime.now(datetime.timezone.utc)
+
+		###### Encrypting the new password
+		#enc_data = self.kerberos_cipher.encrypt(subkey, 5, new_password.encode(), None)
+		subkey_struct = EncryptionKey({'keytype': subkey.enctype, 'keyvalue': subkeydata})
+		subkey_cipher = _enctype_table[subkey.enctype]
+
+		changepwstruct = {}
+		changepwstruct['newpasswd'] = new_password.encode()
+
+		if targetuser is not None:
+			if targetuser.find('@') != -1:
+				targetuser, targetrealm = targetuser.split('@')
+			changepwstruct['targname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [targetuser]})
+			changepwstruct['targrealm'] = targetrealm if targetrealm is not None else self.credential.domain.upper()
+		else:
+			changepwstruct['targname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.credential.username]})
+			changepwstruct['targrealm'] = self.credential.domain.upper()
+
+		privstruct = {}
+		privstruct['user-data'] = ChangePasswdDataMS(changepwstruct).dump()
+		privstruct['seq-number'] = 0
+		privstruct['s-address'] = HostAddress({'addr-type': 1, 'address': hostname.encode()})
+
+		privdata = KRB_PRIV({
+			'pvno': krb5_pvno,
+			'msg-type': MESSAGE_TYPE.KRB_PRIV.value,
+			'enc-part': EncryptedData({'etype': subkey.enctype, 'cipher': subkey_cipher.encrypt(subkey, 13, EncKrbPrivPart(privstruct).dump(), None)})
+		}).dump()
+		
+		###### Calculating authenticator data
+		authenticator_data = {}
+		authenticator_data['authenticator-vno'] = krb5_pvno
+		authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
+		authenticator_data['cname'] = self.kerberos_TGT['cname']
+		authenticator_data['cusec'] = now.microsecond
+		authenticator_data['ctime'] = now.replace(microsecond=0)
+		authenticator_data['seq-number'] = 0
+		authenticator_data['subkey'] = subkey_struct
+		
+		authenticator_data_enc = self.kerberos_cipher.encrypt(self.kerberos_session_key, 11, Authenticator(authenticator_data).dump(), None)
+		
+		ap_req = {}
+		ap_req['pvno'] = krb5_pvno
+		ap_req['msg-type'] = MESSAGE_TYPE.KRB_AP_REQ.value
+		ap_req['ap-options'] = APOptions(set())
+		ap_req['ticket'] = Ticket(self.kerberos_TGT['ticket'])
+		ap_req['authenticator'] = EncryptedData({'etype': self.kerberos_cipher_type, 'cipher': authenticator_data_enc})
+		
+		ap_req_encoded = AP_REQ(ap_req).dump()
+		
+		
+		message = KRB5ChangePassword(ap_req_encoded, privdata).to_bytes()
+		logger.debug('[ChangePassword] Sending request to server')
+
+		newt = self.target.get_newtarget(self.target.get_hostname_or_ip(), port=464)
+		ksocket = AIOKerberosPWChangeClientSocket(newt)
+		response = await ksocket.sendrecv(message)
+		reply = KRB5ChangePassword.from_bytes(response)
+		privresponse = reply.parse_reply(subkey_cipher, subkey)
+		return privresponse
