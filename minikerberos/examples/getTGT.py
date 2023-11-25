@@ -3,7 +3,7 @@ import asyncio
 from minikerberos.common.factory import KerberosClientFactory, kerberos_url_help_epilog
 from minikerberos.common.kirbi import Kirbi
 
-async def getTGT(kerberos_url, kirbifile = None, ccachefile = None, nopac = False):
+async def getTGT(kerberos_url:str, kirbifile:str = None, ccachefile:str = None, nopac:bool = False):
 	cu = KerberosClientFactory.from_url(kerberos_url)
 	client = cu.get_client()
 	logging.debug('Getting TGT')

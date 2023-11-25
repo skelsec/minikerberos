@@ -67,6 +67,8 @@ setup(
 			'minikerberos-cve202233679 = minikerberos.examples.CVE_2022_33679:main',
 			'minikerberos-kerb23hashdecrypt = minikerberos.examples.kerb23hashdecrypt:main',
 			'minikerberos-kerberoast   = minikerberos.examples.spnroast:main',
+            'minikerberos-asreproast   = minikerberos.examples.asreproast:main',
+            'minikerberos-changepw   = minikerberos.examples.changepassword:main',
 		],
 	}
 )

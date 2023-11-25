@@ -6,7 +6,7 @@ from minikerberos.common.spn import KerberosSPN
 from minikerberos.aioclient import AIOKerberosClient
 from minikerberos.common.kirbi import Kirbi
 
-async def getTGS(kerberos_url, spn, kirbifile = None, ccachefile = None, cross_domain = False):
+async def getTGS(kerberos_url:str, spn:str, kirbifile:str = None, ccachefile:str = None, cross_domain:bool = False):
 	if isinstance(spn, str):
 		spn = KerberosSPN.from_spn(spn)
 

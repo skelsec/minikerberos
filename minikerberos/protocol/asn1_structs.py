@@ -725,7 +725,7 @@ class KRB_PRIV(core.Sequence):
 	_fields = [
 		('pvno', krb5int32, {'tag_type': TAG, 'tag': 0}),
 		('msg-type', krb5int32, {'tag_type': TAG, 'tag': 1}),#MESSAGE_TYPE
-		('enc-part', EncryptedData, {'tag_type': TAG, 'tag': 2}),
+		('enc-part', EncryptedData, {'tag_type': TAG, 'tag': 3}),
 	] 
 
 
