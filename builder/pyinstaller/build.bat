@@ -16,20 +16,21 @@ GOTO :BUILD
 cd %repo%\..\
 pip install .
 cd %repo%\examples
-pyinstaller -F ccache_editor.py %hiddenimports%
-pyinstaller -F ccache2kirbi.py %hiddenimports%
-pyinstaller -F ccacheroast.py %hiddenimports%
-pyinstaller -F CVE_2022_33647.py %hiddenimports%
-pyinstaller -F CVE_2022_33679.py %hiddenimports%
-pyinstaller -F getNT.py %hiddenimports%
-pyinstaller -F getS4U2proxy.py %hiddenimports%
-pyinstaller -F getS4U2self.py %hiddenimports%
-pyinstaller -F getTGS.py %hiddenimports%
-pyinstaller -F getTGT.py %hiddenimports%
-pyinstaller -F kerb23hashdecrypt.py %hiddenimports%
-pyinstaller -F kirbi2ccache.py %hiddenimports%
-pyinstaller -F spnroast.py %hiddenimports%
-pyinstaller -F asreproast.py %hiddenimports%
+pyinstaller -F ccache_editor.py -n minikerberos-ccacheedit %hiddenimports%
+pyinstaller -F ccache2kirbi.py -n minikerberos-ccache2kirbi %hiddenimports%
+pyinstaller -F ccacheroast.py -n minikerberos-ccacheroast %hiddenimports%
+pyinstaller -F CVE_2022_33647.py -n minikerberos-cve202233647 %hiddenimports%
+pyinstaller -F CVE_2022_33679.py -n minikerberos-cve202233679 %hiddenimports%
+pyinstaller -F getNT.py -n minikerberos-getNTPKInit %hiddenimports%
+pyinstaller -F getS4U2proxy.py -n minikerberos-getS4U2proxy %hiddenimports%
+pyinstaller -F getS4U2self.py -n minikerberos-getS4U2self %hiddenimports%
+pyinstaller -F getTGS.py -n minikerberos-getTGS %hiddenimports%
+pyinstaller -F getTGT.py -n minikerberos-getTGT %hiddenimports%
+pyinstaller -F kerb23hashdecrypt.py -n minikerberos-kerb23hashdecrypt %hiddenimports%
+pyinstaller -F kirbi2ccache.py -n minikerberos-kirbi2ccache %hiddenimports%
+pyinstaller -F spnroast.py -n minikerberos-kerberoast %hiddenimports%
+pyinstaller -F asreproast.py -n minikerberos-asreproast %hiddenimports%
+pyinstaller -F changepassword.py -n minikerberos-changepw %hiddenimports%
 cd %repo%\examples\dist & copy *.exe %root%\
 GOTO :CLEANUP
 
