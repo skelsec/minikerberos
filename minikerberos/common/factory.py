@@ -98,7 +98,7 @@ class KerberosClientFactory:
 	def get_creds(self):
 		if self.credential is not None:
 			return copy.deepcopy(self.credential)
-
+		
 		if self.secret_type == KerberosSecretType.KEYTAB:
 			return KerberosCredential.from_keytab(self.secret, self.username, self.domain)
 		if self.secret_type == KerberosSecretType.KIRBI:
