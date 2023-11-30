@@ -1,14 +1,13 @@
-![Supported Python versions](https://img.shields.io/badge/python-3.6+-blue.svg) [![Twitter](https://img.shields.io/twitter/follow/skelsec?label=skelsec&style=social)](https://twitter.com/intent/follow?screen_name=skelsec)
+![Supported Python versions](https://img.shields.io/badge/python-3.7+-blue.svg) [![Twitter](https://img.shields.io/twitter/follow/skelsec?label=skelsec&style=social)](https://twitter.com/intent/follow?screen_name=skelsec)
+
+## :triangular_flag_on_post: Sponsors
+
+If you like this project, consider sponsoring it on GitHub! [Sponsors](https://github.com/sponsors/skelsec/)
 
 
 # minikerberos
 `minikerberos` is a kerberos client library written in `Python>=3.6` it is the kerberos library used in other tools suchs as `pypykatz`, `aiosmb` and `msldap`. It also comes with multiple useful examples for pentesters who wish to perform security audits on the kerberos protocol.  
 
-## :triangular_flag_on_post: Sponsors
-
-If you want to sponsor this project, you can do it on GitHub now!
-
- 
 ## Installation
 
 Install it via either cloning it from GitHub and using  
