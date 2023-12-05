@@ -19,9 +19,6 @@ from asn1crypto import core
 from asn1crypto import x509
 from asn1crypto import keys
 
-from oscrypto.keys import parse_pkcs12
-from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
-
 from minikerberos.protocol.constants import NAME_TYPE, MESSAGE_TYPE, PaDataType
 from minikerberos.protocol.encryption import Enctype, _checksum_table, _enctype_table, Key
 from minikerberos.protocol.structures import AuthenticatorChecksum
@@ -113,6 +110,8 @@ class PKINIT:
 
 	@staticmethod
 	def from_pfx(pfxfile, pfxpass, dh_params = None):
+		from oscrypto.keys import parse_pkcs12
+		from oscrypto.asymmetric import load_private_key
 		pkinit = PKINIT()
 		#print('Loading pfx12')		
 		if isinstance(pfxpass, str):
@@ -330,6 +329,8 @@ class PKINIT:
 		2. the certificate used to sign the data blob
 		3. the singed 'signed_attrs' structure (ASN1) which points to the "data" structure (in point 1)
 		"""
+
+		from oscrypto.asymmetric import rsa_pkcs1v15_sign
 		
 		da = {}
 		da['algorithm'] = algos.DigestAlgorithmId('1.3.14.3.2.26') # for sha1
