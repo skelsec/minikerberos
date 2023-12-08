@@ -807,7 +807,7 @@ class AIOKerberosClient:
 		target_addr = target_domain
 		if target_ip is not None:
 			target_addr = target_ip
-		newt = self.target.get_newtarget(target_addr)
+		newt = self.target.get_newtarget(target_addr, port=88)
 		newc = KerberosCredential.from_kirbi(kirbi, encoding='kirbi')
 		new_factory = KerberosClientFactory(newt, newc, newt.proxies)
 

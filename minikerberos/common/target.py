@@ -6,7 +6,7 @@ class KerberosTarget(UniTarget):
 	def __init__(self, ip:str = None, proxies = None, protocol = UniProto.CLIENT_TCP, timeout = 10, port = 88):
 		UniTarget.__init__(self, ip, port , protocol, timeout=timeout, proxies = proxies, dc_ip = ip)
 
-	def get_newtarget(self, ip, port=88, hostname = None):
+	def get_newtarget(self, ip, port:int=88, hostname:str = None):
 		return KerberosTarget(
 			ip, 
 			port = port, 

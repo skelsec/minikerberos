@@ -19,8 +19,10 @@ from minikerberos.common.kirbi import Kirbi
 from asn1crypto import cms
 from asn1crypto import algos
 from minikerberos.protocol.dirtydh import DirtyDH
-from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
-from oscrypto.keys import parse_pkcs12, parse_certificate, parse_private
+
+# HIDDEN IMPORTS!!!! TODO: fix this
+#from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
+#from oscrypto.keys import parse_pkcs12, parse_certificate, parse_private
 
 def get_encoded_data(data:bytes or str, encoding = 'file') -> bytes:
 	if encoding == 'file':
@@ -320,6 +322,8 @@ class KerberosCredential:
 
 	@staticmethod
 	def from_pem_data(certdata: str or bytes, keydata:str or bytes, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
+		from oscrypto.keys import parse_certificate, parse_private
+
 		if isinstance(certdata, str):
 			certdata = base64.b64decode(certdata.replace(' ','').replace('\r','').replace('\n','').replace('\t',''))
 		if isinstance(keydata, str):
@@ -363,6 +367,9 @@ class KerberosCredential:
 
 	@staticmethod
 	def from_pfx_string(data: str or bytes, password:str, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
+
+		from oscrypto.keys import parse_pkcs12
+
 		k = KerberosCredential()
 		if password is None:
 			password = b''
@@ -426,6 +433,8 @@ class KerberosCredential:
 		2. the certificate used to sign the data blob
 		3. the singed 'signed_attrs' structure (ASN1) which points to the "data" structure (in point 1)
 		"""
+		from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
+
 		
 		da = {}
 		da['algorithm'] = algos.DigestAlgorithmId('1.3.14.3.2.26') # for sha1
