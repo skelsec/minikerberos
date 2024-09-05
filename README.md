@@ -2,11 +2,17 @@
 
 ## :triangular_flag_on_post: Sponsors
 
-If you like this project, consider sponsoring it on GitHub! [Sponsors](https://github.com/sponsors/skelsec/)
+If you like this project, consider purchasing licenses of [OctoPwn](https://octopwn.com/), our full pentesting suite that runs in your browser!  
+For notifications on new builds/releases and other info, hop on to our [Discord](https://discord.gg/PM8utcNxMS)
 
 
 # minikerberos
 `minikerberos` is a kerberos client library written in `Python>=3.6` it is the kerberos library used in other tools suchs as `pypykatz`, `aiosmb` and `msldap`. It also comes with multiple useful examples for pentesters who wish to perform security audits on the kerberos protocol.  
+
+## :triangular_flag_on_post: Runs in the browser
+
+This project, alongside with many other pentester tools runs in the browser with the power of OctoPwn!  
+Check out the community version at [OctoPwn - Live](https://live.octopwn.com/)
 
 ## Installation
 
