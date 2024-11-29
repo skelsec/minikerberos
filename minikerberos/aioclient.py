@@ -5,6 +5,7 @@ import datetime
 import secrets
 import os
 import io
+import asyncio
 from typing import List
 
 from minikerberos import logger
@@ -53,6 +54,13 @@ class AIOKerberosClient:
 		self.kerberos_cipher_type = None
 		self.kerberos_key = None
 		self.server_salt = None
+
+	async def __aenter__(self):
+		return self
+		
+	async def __aexit__(self, exc_type, exc, traceback):
+		# there are no long-running resources to close
+		return
 
 	def build_asreq_lts(self, supported_encryption_method, kdcopts:List[str] = ['forwardable','renewable','proxiable'], enctimestamp=None, newnow=None, no_preauth = False, kdc_req_body_extra = None, with_pac:bool = True) -> AS_REQ:
 		logger.debug('Constructing TGT request with auth data')
@@ -308,12 +316,41 @@ class AIOKerberosClient:
 			if rep.native['error-code'] != KerberosErrorCode.KDC_ERR_PREAUTH_REQUIRED.value:
 				raise KerberosError(rep)
 			rep = rep.native
-			logger.debug('Got reply from server, asikg to provide auth data')
-			supported_encryption_method = self.select_preferred_encryption_method(rep)
+			logger.debug('Got reply from server, askig to provide auth data')
+
+			preauth_rep = None
+			supported_encryption_method = self.select_preferred_encryption_method(rep) #must be here regardless of override_etype, because of salt!
+
+			if override_etype is None:
+				preauth_rep = await self.do_preauth(supported_encryption_method, with_pac=with_pac)
+				
+			else:
+				if isinstance(override_etype, list) is False:
+					override_etype = [override_etype]
+				for etype_int in override_etype:
+					etype = EncryptionType(int(etype_int))
+					try:
+						preauth_rep = await self.do_preauth(etype, with_pac=with_pac)
+					except KerberosError as e:
+						if e.errorcode != KerberosErrorCode.KDC_ERR_ETYPE_NOTSUPP:
+							raise e
+						
+						logger.debug('Failed to get TGT with etype %s' % etype.name)
+						continue
+
+					except Exception as e:
+						raise e
+					
+					if preauth_rep.name != 'KRB_ERROR':
+						break
+					logger.debug('Failed to get TGT with etype %s' % etype.name)
+					continue
 			
-			rep = await self.do_preauth(supported_encryption_method, with_pac=with_pac)
+			if preauth_rep is None:
+				raise Exception('Failed to get TGT with any of the provided etypes!')
+			
 			logger.debug('Got valid TGT response from server')
-			rep = rep.native
+			rep = preauth_rep.native
 			self.kerberos_TGT = rep
 
 
