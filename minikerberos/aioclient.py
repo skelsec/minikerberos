@@ -398,7 +398,7 @@ class AIOKerberosClient:
 				# but we can request etype 23 here for which all is implemented
 				kdc_req_body['etype'] = [23]
 			else:
-				kdc_req_body['etype'] = [self.kerberos_cipher_type]
+				kdc_req_body['etype'] = [self.kerberos_cipher_type, 23]
 
 		authenticator_data = {}
 		authenticator_data['authenticator-vno'] = krb5_pvno
