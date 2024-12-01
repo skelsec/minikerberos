@@ -120,7 +120,7 @@ class Credential:
 		tgt_rep = {}
 		tgt_rep['pvno'] = krb5_pvno
 		tgt_rep['msg-type'] = MESSAGE_TYPE.KRB_AS_REP.value
-		tgt_rep['crealm'] = self.server.realm.to_string()
+		tgt_rep['crealm'] = self.client.realm.to_string()
 		tgt_rep['cname'] = self.client.to_asn1()[0]
 		tgt_rep['ticket'] = Ticket.load(self.ticket.to_asn1()).native
 		tgt_rep['enc-part'] = enc_part.native
@@ -138,7 +138,7 @@ class Credential:
 		tgt_rep = {}
 		tgt_rep['pvno'] = krb5_pvno
 		tgt_rep['msg-type'] = MESSAGE_TYPE.KRB_AS_REP.value
-		tgt_rep['crealm'] = self.server.realm.to_string()
+		tgt_rep['crealm'] = self.client.realm.to_string()
 		tgt_rep['cname'] = self.client.to_asn1()[0]
 		tgt_rep['ticket'] = Ticket.load(self.ticket.to_asn1()).native
 		tgt_rep['enc-part'] = enc_part.native
