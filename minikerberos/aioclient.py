@@ -423,7 +423,7 @@ class AIOKerberosClient:
 		now = datetime.datetime.now(datetime.timezone.utc)
 		kdc_req_body = {}
 		kdc_req_body['kdc-options'] = KDCOptions(set(flags))
-		kdc_req_body['realm'] = spn_user.domain.upper()
+		kdc_req_body['realm'] = self.kerberos_TGT['ticket']['sname']['name-string'][1]
 		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': spn_user.get_principalname()})
 		kdc_req_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['nonce'] = secrets.randbits(31)
