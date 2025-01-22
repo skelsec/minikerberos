@@ -94,6 +94,9 @@ class KerberosClientFactory:
 			timeout = self.timeout
 		)
 		return res
+	
+	def get_credential(self):
+		return self.get_creds()
 
 	def get_creds(self):
 		if self.credential is not None:
