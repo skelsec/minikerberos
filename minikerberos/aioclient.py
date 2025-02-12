@@ -280,6 +280,13 @@ class AIOKerberosClient:
 			kdc_req_body['etype'] = self.credential.get_supported_enctypes()
 		else:
 			kdc_req_body['etype'] = override_etype
+		
+		# if we do pkinit, we can't offer RC4 encryption
+		if self.credential.certificate is not None:
+			override_etype = None
+			kdc_req_body['etype'] = [x for x in kdc_req_body['etype'] if x != 23]
+			if len(kdc_req_body['etype']) == 0:
+				kdc_req_body['etype'] = [18,17] # 23 breaks...
 
 		pa_data_1 = {}
 		if with_pac is True:
