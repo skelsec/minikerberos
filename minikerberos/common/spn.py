@@ -5,6 +5,7 @@ class KerberosSPN:
 		self.username = None
 		self.service  = None #the service we are trying to get a ticket for (eg. cifs/mssql...)
 		self.domain   = None #the kerberos realm
+		self.port     = None #the port the service is running on
 		
 	# https://docs.microsoft.com/en-us/windows/desktop/ad/name-formats-for-unique-spns
 	#def from_spn(self):
@@ -45,16 +46,23 @@ class KerberosSPN:
 					raise Exception('The following SPN is incorrect without additionally setting the realm: %s' % s)
 		if override_realm is not None:
 			kt.domain = override_realm
+		if kt.domain.find(':') != -1:
+			kt.domain, kt.port = kt.domain.split(':', 1)
 		return kt
 
 	def get_principalname(self):
 		if self.service:
+			if self.port:
+				return [self.service, '%s:%s' % (self.username, self.port)]
 			return [self.service, self.username]
 		return [self.username]
 
 	def get_formatted_pname(self):
 		if self.service:
-			return '%s/%s@%s' % (self.service, self.username, self.domain)
+			if self.port:
+				return '%s/%s:%s@%s' % (self.service, self.username, self.port, self.domain)
+			else:
+				return '%s/%s@%s' % (self.service, self.username, self.domain)
 		return '%s@%s' % (self.username, self.domain)
 	
 	def __str__(self):

@@ -845,9 +845,21 @@ class AIOKerberosClient:
 		tgs, encpart, key = await self.get_TGS(crossrealm_spn)
 		logger.debug('Got referral ticket!')
 
+		for _ in range(10): # 10 is arbitrary, but I fail to imagine a scenario where we would need more than 10 referrals
+			if encpart['sname']['name-string'][1].upper() == target_domain.upper():
+				break
+
+			# otherwise we have to do this again with the new krbtgt
+			logger.debug('The referral ticket is not for the target domain, getting new referral ticket from %s' % encpart['sname']['name-string'][1])
+			
+			kirbi = Kirbi.from_ticketdata(tgs, encpart)
+			newt = self.target.get_newtarget(encpart['sname']['name-string'][1], port=88)
+			newc = KerberosCredential.from_kirbi(kirbi, encoding='kirbi')
+			new_factory = KerberosClientFactory(newt, newc, newt.proxies)
+			newclient = new_factory.get_client()
+			tgs, encpart, key, new_factory = await newclient.get_referral_ticket(target_domain, target_ip)
 
 		kirbi = Kirbi.from_ticketdata(tgs, encpart)
-
 		target_addr = target_domain
 		if target_ip is not None:
 			target_addr = target_ip
