@@ -231,8 +231,8 @@ class KerbrosClient:
 		"""
 		decrypt_tgt: used for asreproast attacks
 		Steps performed:
-			1. Send and empty (no encrypted timestamp) AS_REQ with all the encryption types we support
-			2. Depending on the response (either error or AS_REP with TGT) we either send another AS_REQ with the encrypted data or return the TGT (or fail miserably)
+			1. Send encrypted timestamp or empty (if no pre-auth selected) AS_REQ with all the encryption types we support
+			2. Depending on the response (either error or AS_REP with TGT) returns the TGT (or fail miserably)
 			3. PROFIT
 		"""
 
@@ -241,71 +241,81 @@ class KerbrosClient:
 		if err is None:
 			return
 		
-		logger.debug('Generating initial TGT without authentication data')
-		now = datetime.datetime.now(datetime.timezone.utc)
-		kdc_req_body = {}
-		kdc_req_body['kdc-options'] = KDCOptions(set(kdcopts))
-		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': self.credential.username.split('/')})
-		kdc_req_body['realm'] = self.credential.domain.upper()
-		if override_sname is None:
-			kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.credential.domain.upper()]})
-		else:
-			# if we want to directly kerberoast with no-preauth user
-			kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': override_sname.get_principalname()})
-		kdc_req_body['till']  = (now + datetime.timedelta(days=1)).replace(microsecond=0)
-		kdc_req_body['rtime'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
-		kdc_req_body['nonce'] = secrets.randbits(31)
 		if override_etype is None:
-			kdc_req_body['etype'] = self.credential.get_supported_enctypes()
+			supported_etypes = [e for e in self.credential.get_supported_enctypes() if e in _enctype_table]
 		else:
-			kdc_req_body['etype'] = override_etype
+			if isinstance(override_etype, list) is False:
+				override_etype = [override_etype]
+			supported_etypes = override_etype
 
-		pa_data_1 = {}
-		if with_pac is True:
-			pa_data_1['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
-			pa_data_1['padata-value'] = PA_PAC_REQUEST({'include-pac': True}).dump()
-		
-		kdc_req = {}
-		kdc_req['pvno'] = krb5_pvno
-		kdc_req['msg-type'] = MESSAGE_TYPE.KRB_AS_REQ.value
-		if len(pa_data_1) > 0:
-			kdc_req['padata'] = [pa_data_1]
-		kdc_req['req-body'] = KDC_REQ_BODY(kdc_req_body)
-		
-		req = AS_REQ(kdc_req)	
-		
-		logger.debug('Sending initial TGT to %s' % self.ksoc.get_addr_str())
-		rep = self.ksoc.sendrecv(req.dump(), throw = False)
+		if self.credential.nopreauth:
+			logger.debug('Generating initial TGT without authentication data')
+			now = datetime.datetime.now(datetime.timezone.utc)
+			kdc_req_body = {}
+			kdc_req_body['kdc-options'] = KDCOptions(set(kdcopts))
+			kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': self.credential.username.split('/')})
+			kdc_req_body['realm'] = self.credential.domain.upper()
+			if override_sname is None:
+				kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.credential.domain.upper()]})
+			else:
+				# if we want to directly kerberoast with no-preauth user
+				kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': override_sname.get_principalname()})
+			kdc_req_body['till']  = (now + datetime.timedelta(days=1)).replace(microsecond=0)
+			kdc_req_body['rtime'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
+			kdc_req_body['nonce'] = secrets.randbits(31)
+			if override_etype is None:
+				kdc_req_body['etype'] = self.credential.get_supported_enctypes()
+			else:
+				kdc_req_body['etype'] = override_etype
 
-		if rep.name != 'KRB_ERROR':
+			pa_data_1 = {}
+			if with_pac is True:
+				pa_data_1['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
+				pa_data_1['padata-value'] = PA_PAC_REQUEST({'include-pac': True}).dump()
+			
+			kdc_req = {}
+			kdc_req['pvno'] = krb5_pvno
+			kdc_req['msg-type'] = MESSAGE_TYPE.KRB_AS_REQ.value
+			if len(pa_data_1) > 0:
+				kdc_req['padata'] = [pa_data_1]
+			kdc_req['req-body'] = KDC_REQ_BODY(kdc_req_body)
+			
+			req = AS_REQ(kdc_req)	
+			
+			logger.debug('Sending initial TGT to %s' % self.ksoc.get_addr_str())
+			rep = self.ksoc.sendrecv(req.dump(), throw = False)
+
+			if rep.name != 'KRB_ERROR':
+				raise KerberosError(rep)
 			#user can do kerberos auth without preauthentication!
 			rep = rep.native
 			self.kerberos_TGT = rep
-
 			#if we want to roast the asrep (tgt rep) part then we dont even have the proper keys to decrypt
 			#so we just return, the asrep can be extracted from this object anyhow
-			if decrypt_tgt == False or self.credential.nopreauth is True:
-				return rep
+			return rep
 
-			self.kerberos_cipher = _enctype_table[rep['enc-part']['etype']]
-			self.kerberos_cipher_type = rep['enc-part']['etype']
-			self.kerberos_key = Key(self.kerberos_cipher.enctype, self.credential.get_key_for_enctype(EncryptionType(rep['enc-part']['etype'])))
-			
-		else:
-			if rep.native['error-code'] != KerberosErrorCode.KDC_ERR_PREAUTH_REQUIRED.value:
-				raise KerberosError(rep)
-			rep = rep.native
-			logger.debug('Got reply from server, asikg to provide auth data')
-			supported_encryption_method = self.select_preferred_encryption_method(rep)
-
-			rep = self.do_preauth(supported_encryption_method)
-			logger.debug('Got valid TGT response from server')
-			rep = rep.native
-			self.kerberos_TGT = rep
+	
+				
+		logger.debug('Generating initial TGT with authentication data')
+		preauth_rep = None
+		etype = EncryptionType(int(supported_etypes[0]))
+		try:
+			preauth_rep = self.do_preauth(etype, with_pac=with_pac)
+		except KerberosError as e:
+			if e.errorcode != KerberosErrorCode.KDC_ERR_ETYPE_NOTSUPP:
+				raise e	
+			logger.debug('Failed to get TGT with etype %s' % etype.name)
+			etype = self.select_preferred_encryption_method(e.rep.native)
+			logger.debug('Trying with supported suggested etype %s' % etype.name)
+			preauth_rep = self.do_preauth(etype, with_pac=with_pac)
+		
+		logger.debug('Got valid TGT response from server')
+		rep = preauth_rep.native
+		self.kerberos_TGT = rep
 
 		if self.credential.certificate is not None:
 			self.kerberos_TGT_encpart, self.kerberos_session_key, self.kerberos_cipher = self.decrypt_asrep_cert(rep)
-			self.kerberos_cipher_type = supported_encryption_method.value
+			self.kerberos_cipher_type = rep['enc-part']['etype']
 
 			self.ccache.add_tgt(self.kerberos_TGT, self.kerberos_TGT_encpart, override_pp = True)
 			logger.debug('Got valid TGT')
@@ -348,7 +358,7 @@ class KerbrosClient:
 	def get_TGS(self, spn_user, override_etype = None, is_linux = False):
 		"""
 		Requests a TGS ticket for the specified user.
-		Retruns the TGS ticket, end the decrpyted encTGSRepPart.
+		Returns the TGS ticket, end the decrpyted encTGSRepPart.
 
 		spn_user: KerberosTarget: the service user you want to get TGS for.
 		override_etype: None or list of etype values (int) Used mostly for kerberoasting, will override the AP_REQ supported etype values (which is derived from the TGT) to be able to recieve whatever tgs tiecket 
@@ -383,7 +393,7 @@ class KerbrosClient:
 				# but we can request etype 23 here for which all is implemented
 				kdc_req_body['etype'] = [23]
 			else:
-				kdc_req_body['etype'] = [self.kerberos_cipher_type]
+				kdc_req_body['etype'] = [self.kerberos_cipher_type, 23]
 
 		authenticator_data = {}
 		authenticator_data['authenticator-vno'] = krb5_pvno

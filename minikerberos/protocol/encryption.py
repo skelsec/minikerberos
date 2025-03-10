@@ -274,8 +274,8 @@ class _DESCBC(_SimplifiedEnctype):
 	def encrypt(cls, key, keyusage, plaintext, confounder):
 		if confounder is None:
 			confounder = get_random_bytes(cls.blocksize)
-		basic_plaintext = confounder + '\x00'*cls.macsize + _zeropad(plaintext, cls.padsize)
-		checksum = cls.hashmod.new(basic_plaintext).digest()
+		basic_plaintext = confounder + b'\x00'*cls.macsize + _zeropad(plaintext, cls.padsize)
+		checksum = cls.hashmod(basic_plaintext).digest()
 		basic_plaintext = basic_plaintext[:len(confounder)] + checksum + basic_plaintext[len(confounder)+len(checksum):]
 		return cls.basic_encrypt(key, basic_plaintext)
 		
