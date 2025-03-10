@@ -263,7 +263,7 @@ class AIOKerberosClient:
 			return
 		
 		if override_etype is None:
-			supported_etypes = [e for e in self.credential.get_supported_enctypes() if e in _enctype_table]
+			supported_etypes = self.credential.get_supported_enctypes()
 		else:
 			if isinstance(override_etype, list) is False:
 				override_etype = [override_etype]
@@ -327,6 +327,9 @@ class AIOKerberosClient:
 		logger.debug('Got valid TGT response from server')
 		rep = preauth_rep.native
 		self.kerberos_TGT = rep
+
+		if decrypt_tgt is False:
+			return rep
 		
 		if self.credential.certificate is not None:
 			self.kerberos_TGT_encpart, self.kerberos_session_key, self.kerberos_cipher = self.decrypt_asrep_cert(rep)
