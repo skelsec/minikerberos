@@ -10,6 +10,13 @@ import os
 
 from unicrypto import hashlib
 
+from cryptography import x509 as cryptoX509
+from cryptography.hazmat.primitives.serialization import pkcs12
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.serialization import Encoding
+
 from minikerberos.common.constants import KerberosSecretType
 from minikerberos.protocol.encryption import string_to_key, Enctype
 from minikerberos.protocol.constants import EncryptionType
@@ -18,11 +25,9 @@ from minikerberos.common.keytab import Keytab
 from minikerberos.common.kirbi import Kirbi
 from asn1crypto import cms
 from asn1crypto import algos
+from asn1crypto import x509
 from minikerberos.protocol.dirtydh import DirtyDH
 
-# HIDDEN IMPORTS!!!! TODO: fix this
-#from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
-#from oscrypto.keys import parse_pkcs12, parse_certificate, parse_private
 
 def get_encoded_data(data:bytes or str, encoding = 'file') -> bytes:
 	if encoding == 'file':
@@ -321,15 +326,15 @@ class KerberosCredential:
 
 	@staticmethod
 	def from_pem_data(certdata: str or bytes, keydata:str or bytes, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
-		from oscrypto.keys import parse_certificate, parse_private
-
 		if isinstance(certdata, str):
 			certdata = base64.b64decode(certdata.replace(' ','').replace('\r','').replace('\n','').replace('\t',''))
 		if isinstance(keydata, str):
 			keydata = base64.b64decode(keydata.replace(' ','').replace('\r','').replace('\n','').replace('\t',''))
 		k = KerberosCredential()
-		k.certificate = parse_certificate(certdata)
-		k.private_key = parse_private(keydata)
+		cert = cryptoX509.load_pem_x509_certificate(certdata)
+		cert_der = cert.public_bytes(encoding=Encoding.DER)
+		k.certificate = x509.Certificate.load(cert_der)
+		k.private_key = serialization.load_pem_private_key(keydata, password=None)
 		k.set_user_and_domain_from_cert(username = username, domain = domain)
 		k.set_dhparams(dhparams)
 		return k
@@ -367,8 +372,6 @@ class KerberosCredential:
 	@staticmethod
 	def from_pfx_string(data: str or bytes, password:str, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
 
-		from oscrypto.keys import parse_pkcs12
-
 		k = KerberosCredential()
 		if password is None:
 			password = b''
@@ -378,10 +381,10 @@ class KerberosCredential:
 		if isinstance(data, str):
 			data = base64.b64decode(data.replace(' ', '').replace('\r','').replace('\n','').encode())
 
-		# private_key is not actually the private key object but the privkey data because oscrypto privkey 
-		# cant be serialized so we cant make copy of it.
-		k.private_key, k.certificate, extra_certs = parse_pkcs12(data, password = password)
-		#k.private_key = load_private_key(privkeyinfo)
+
+		k.private_key, cert, extra_certs = pkcs12.load_key_and_certificates(data, password = password)
+		cert_der = cert.public_bytes(encoding=Encoding.DER)
+		k.certificate = x509.Certificate.load(cert_der)
 		
 		k.set_user_and_domain_from_cert(username = username, domain = domain)
 		k.set_dhparams(dhparams)
@@ -432,7 +435,6 @@ class KerberosCredential:
 		2. the certificate used to sign the data blob
 		3. the singed 'signed_attrs' structure (ASN1) which points to the "data" structure (in point 1)
 		"""
-		from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
 
 		
 		da = {}
@@ -452,7 +454,7 @@ class KerberosCredential:
 			cms.CMSAttribute({'type': 'message_digest', 'values': [hashlib.sha1(data).digest()]}), ### hash of the data, the data itself will not be signed, but this block of data will be.
 		]
 		si['signature_algorithm'] = algos.SignedDigestAlgorithm({'algorithm' : '1.2.840.113549.1.1.1'})
-		si['signature'] = rsa_pkcs1v15_sign(load_private_key(self.private_key),  cms.CMSAttributes(si['signed_attrs']).dump(), "sha1")
+		si['signature'] = self.private_key.sign(cms.CMSAttributes(si['signed_attrs']).dump(), padding.PKCS1v15() , hashes.SHA1())
 
 		ec = {}
 		ec['content_type'] = '1.3.6.1.5.2.3.1'
