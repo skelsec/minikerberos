@@ -309,20 +309,59 @@ class KerberosCredential:
 		Tries to guess the correct username and domain from the current certificate,
 		if 'username' and/or 'domain' is set it will set those
 		"""
+		# In Microsoft ecosystem there seem to be two main naming conventions for their certificates' subjects:
+		# - For AD, the principal's distinguished name a.k.a NT-X500-PRINCIPAL (there are others too but not supported here)
+		# - For EntraID, something not standard like "<principal SID>/<principal EntraID GUID>/login.windows.net/<tenant GUID>/<principal email>" e.g:
+		# 	S-1-12-1-2190073739-1304874406-157446548-3757931170/c26d6885-f0df-4642-8207-5a38c93d2347/login.windows.net/e5bdbab1-eaba-4c81-b953-67e45605e0d8/testuser@bloody.corp
+		#
+		# minkrb doesn't handle as-req with NT-X500-PRINCIPAL so we'll try to extract the UPN/DNS in the SAN or the sAMAccountName in the CN as last resort hoping they're identical
+		#
+		# Mapping reference: "[MS-PKCA] 3.1.5.2.1 Certificate Mapping"
+
 		self.username = username
-		if username is None:
-			self.username = self.certificate.subject.native['common_name'].rsplit('@', 1)[0]
-		self.domain = domain
-		if domain is None:
-			dc = None
-			if 'domain_component' in self.certificate.issuer.native:
-				dc = self.certificate.issuer.native['domain_component']
-			if 'domain_component' in self.certificate.subject.native:
-				dc = self.certificate.subject.native['domain_component']
-			if dc is not None:
-				self.domain = '.'.join(dc[::-1])
+		upn = None
+		dnsname = None
+		cert_domain = None
+		UPN_OID = "1.3.6.1.4.1.311.20.2.3"
+		if not username:
+			if self.certificate.subject_alt_name_value:
+				for san in self.certificate.subject_alt_name_value:
+					if san.native.get("type_id") == UPN_OID:
+						upn = san.native["value"]
+						break
+					elif san.name == "dns_name":
+						dnsname = san.native["value"]
+						break
 			else:
-				raise Exception('Could\'t find proper domain name in the certificate! Please set it manually!')
+				# Multiple cn is possible, e.g. "CN=Test User,CN=Users,DC=corp,DC=local"
+				# but only the last one can possibly be the sAMAccountName
+				cn = self.certificate.subject.native["common_name"]
+				if isinstance(cn, list):
+					cn = cn[-1]
+				if '@' in cn:
+					upn = cn.rsplit('/', 1)[-1]
+				else:
+					self.username = cn
+			if upn:
+				# Even if self.username doesn't match sAMAccountName but match the first part of the UPN, kerberos will find the principal
+				self.username, cert_domain = upn.rsplit('@', 1)
+			elif dnsname:
+				self.username, cert_domain = dnsname.split('.', 1)
+				self.username += '$'
+		self.domain = domain
+		if not domain:
+			if cert_domain:
+				self.domain = cert_domain
+			else:
+				dc = None
+				if 'domain_component' in self.certificate.subject.native:
+					dc = self.certificate.subject.native['domain_component']
+				elif 'domain_component' in self.certificate.issuer.native:
+					dc = self.certificate.issuer.native['domain_component']
+				if dc is not None:
+					self.domain = '.'.join(dc[::-1])
+				else:
+					raise Exception('Could\'t find proper domain name in the certificate! Please set it manually!')
 
 	@staticmethod
 	def from_pem_data(certdata: str or bytes, keydata:str or bytes, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
