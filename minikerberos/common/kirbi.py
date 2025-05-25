@@ -1,9 +1,11 @@
 import base64
-from minikerberos.protocol.asn1_structs import KRBCRED, EncKrbCredPart, KrbCredInfo, EncryptedData
+from minikerberos.protocol.asn1_structs import KRBCRED, EncKrbCredPart, KrbCredInfo, EncryptedData, KERB_DMSA_KEY_PACKAGE
 
 class Kirbi:
-    def __init__(self, kirbiobj:KRBCRED = None):
+    def __init__(self, kirbiobj:KRBCRED = None, encpart = None):
+        # the encpart is optional and will not affect the kirbiobj
         self.kirbiobj = kirbiobj
+        self.encpart = encpart
 
     """
     if isinstance(data, bytes):
@@ -75,7 +77,7 @@ class Kirbi:
         t['enc-part'] = EncryptedData(te)
         t['tickets'] = [tgt_or_tgs['ticket']]
 
-        return Kirbi(KRBCRED(t))
+        return Kirbi(KRBCRED(t), encpart)
     
     @staticmethod
     def format_kirbi(data, n = 100):
@@ -109,6 +111,16 @@ class Kirbi:
             t += 'Flags        : %s\r\n' % flags
             t += 'Keytype      : %s\r\n' % cred['key']['keytype']
             t += 'Key          : %s\r\n' % base64.b64encode(cred['key']['keyvalue']).decode()
+        
+        if self.encpart is not None:
+            t += 'EncryptedPAData:\r\n'
+            if 'encrypted-pa-data' in self.encpart:
+                for encpadata in self.encpart['encrypted-pa-data']:
+                    if encpadata['padata-type'] == 171:
+                        keypackage = KERB_DMSA_KEY_PACKAGE.load(encpadata['padata-value'])
+                        t += '   [171] KeyPackage:\r\n'
+                        for line in keypackage.describe().split('\n'):
+                            t += '      %s\r\n' % line
 
         t += 'EncodedKirbi : \r\n\r\n'
         t += self.format()
@@ -122,6 +134,19 @@ class Kirbi:
             if username is not None:
                 return '/'.join(username['name-string'])
         return None
+    
+    def dmsa_get_previous_keys(self):
+        if self.encpart is None:
+            return []
+        if 'encrypted-pa-data' not in self.encpart:
+            return []
+        prevkeys = []
+        for encpadata in self.encpart['encrypted-pa-data']:
+            if encpadata['padata-type'] == 171:
+                keypackage = KERB_DMSA_KEY_PACKAGE.load(encpadata['padata-value'])
+                for previous_key in keypackage['previous-keys']:
+                    prevkeys.append((previous_key['keytype'].native, previous_key['keyvalue'].native.hex()))
+        return prevkeys
     
     def __str__(self):
         return self.describe()

@@ -355,6 +355,14 @@ class EncryptionKey(core.Sequence):
 		('keyvalue', core.OctetString, {'tag_type': TAG, 'tag': 1}), #
 	]
 
+class EncryptionKeys(core.SequenceOf):
+	_child_spec = EncryptionKey
+
+class KERB_KEY_LIST_REP(EncryptionKeys):
+	pass
+
+class KERB_KEY_LIST_REQ(core.SequenceOf):
+	_child_spec = krb5uint32 #core.Integer
 
 #-- encoded Transited field
 
@@ -851,10 +859,13 @@ class PA_FOR_USER_ENC(core.Sequence):
 	
 	]
 	
-class S4UUserIDOptions(core.BitString):
+#class S4UUserIDOptions(core.BitString):
+class S4UUserIDOptions(core.IntegerBitString):
 	_map = {
 		0x40000000 : 'check-logon-hour', #This option causes the KDC to check logon hour restrictions for the user.
 		0x20000000 : 'signed-with-kun-27', #In a request, asks the KDC to sign the reply with key usage number 27. In a reply, indicates that it was signed with key usage number 27.
+		0x10000000 : 'nt-auth-policy-not-required',
+		0x08000000 : 'unconditional-delegation',
 	}
 
 #https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/cd9d5ca7-ce20-4693-872b-2f5dd41cbff6
@@ -862,7 +873,6 @@ class S4UUserID(core.Sequence):
 	_fields = [
 		('nonce', core.Integer, {'tag_type': TAG, 'tag': 0}), #-- the nonce in KDC-REQ-BODY
 		('cname', PrincipalName, {'tag_type': TAG, 'tag': 1, 'optional' : True}),
-		#-- Certificate mapping hints
 		('crealm', Realm, {'tag_type': TAG, 'tag': 2}),
 		('subject-certificate', core.OctetString, {'tag_type': TAG, 'tag': 3, 'optional' : True}),
 		('options', S4UUserIDOptions, {'tag_type': TAG, 'tag': 4, 'optional' : True}),
@@ -894,3 +904,52 @@ class GSSAPIToken(core.Asn1Value):
 	tag = 0
 	method = 1
 
+class KERB_DMSA_KEY_PACKAGE(core.Sequence):
+	_fields = [
+		('current-keys', KERB_KEY_LIST_REP, {'tag_type': TAG, 'tag': 0}),
+		('previous-keys', KERB_KEY_LIST_REP, {'tag_type': TAG, 'tag': 1}),
+		('expiration-interval', KerberosTime, {'tag_type': TAG, 'tag': 2}),
+		('fetch-interval', KerberosTime, {'tag_type': TAG, 'tag': 4}),
+	]
+
+	def describe(self):
+		current_keys = []
+		keypackage = self.native
+		for key in keypackage['current-keys']:
+			current_keys.append( (key['keytype'], key['keyvalue']))
+		
+		previous_keys = []
+		for key in keypackage['previous-keys']:
+			previous_keys.append( (key['keytype'], key['keyvalue']))
+		
+		text = 'CURRENT KEYS:\n'
+		for current_key in current_keys:
+			if current_key[0] == 23:
+				text += '   RC4: %s\n' % current_key[1].hex()
+			elif current_key[0] == 17:
+				text += '   AES128: %s\n' % current_key[1].hex()
+			elif current_key[0] == 18:
+				text += '   AES256: %s\n' % current_key[1].hex()
+			else:
+				text += '   UNK[%s]: %s\n' % (current_key[0], current_key[1].hex())
+				
+		text += 'PREVIOUS KEYS:\n'
+		for previous_key in previous_keys:
+			if previous_key[0] == 23:
+				text += '   RC4: %s\n' % previous_key[1].hex()
+			elif previous_key[0] == 17:
+				text += '   AES128: %s\n' % previous_key[1].hex()
+			elif previous_key[0] == 18:
+				text += '    AES256: %s\n' % previous_key[1].hex()
+			else:
+				text += '   UNK[%s]: %s\n' % (previous_key[0], previous_key[1].hex())
+		return text
+
+
+class KERB_SUPERSEDED_BY_USER(core.Sequence):
+	_fields = [
+		('name', PrincipalName, {'tag_type': TAG, 'tag': 0}),
+		('realm', Realm, {'tag_type': TAG, 'tag': 1}),
+	]
+	
+	

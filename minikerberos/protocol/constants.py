@@ -1,5 +1,7 @@
 import enum
 
+# TODO: rfc8636 https://www.rfc-editor.org/rfc/rfc8636.html
+
 class NAME_TYPE(enum.Enum):
 	UNKNOWN = 0     #(0),	-- Name type not known
 	PRINCIPAL = 1     #(1),	-- Just the name of the principal as in
@@ -94,6 +96,8 @@ class PaDataType(enum.Enum):
 	TD_REQ_NONCE = 107#		__ INTEGER
 	TD_REQ_SEQ = 108#		__ INTEGER
 	TD_DH_PARAMETERS = 109 #__ PKINIT
+	TD_CMS_DIGEST_ALGORITHMS = 111 #__ rfc8636
+	TD_CERT_DIGEST_ALGORITHMS = 112 #__ rfc8636
 	PA_PAC_REQUEST = 128#	__ jbrezak@exchange.microsoft.com
 	FOR_USER = 129#		__ MS_KILE
 	FOR_X509_USER = 130#		__ MS_KILE
@@ -117,7 +121,12 @@ class PaDataType(enum.Enum):
 	PKU2U_NAME = 148#		__ zhu_pku2u
 	REQ_ENC_PA_REP = 149#	__
 	SPAKE = 151#	__https://datatracker.ietf.org/doc/draft-ietf-kitten-krb-spake-preauth/?include_text=1
+	KEY_LIST_REQ = 161
+	KEY_LIST_REP = 162
 	SUPPORTED_ETYPES = 165 #)	__ MS_KILE
+	SUPERSEDED_BY_USER = 170
+	DMSA_KEY_PACKAGE = 171
+
 
 
 # Full list of key_usage numbers: https://tools.ietf.org/html/rfc4120#section-7.5.1
