@@ -10,6 +10,13 @@ import os
 
 from unicrypto import hashlib
 
+from cryptography import x509 as cryptoX509
+from cryptography.hazmat.primitives.serialization import pkcs12
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.serialization import Encoding
+
 from minikerberos.common.constants import KerberosSecretType
 from minikerberos.protocol.encryption import string_to_key, Enctype
 from minikerberos.protocol.constants import EncryptionType
@@ -18,11 +25,9 @@ from minikerberos.common.keytab import Keytab
 from minikerberos.common.kirbi import Kirbi
 from asn1crypto import cms
 from asn1crypto import algos
+from asn1crypto import x509
 from minikerberos.protocol.dirtydh import DirtyDH
 
-# HIDDEN IMPORTS!!!! TODO: fix this
-#from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
-#from oscrypto.keys import parse_pkcs12, parse_certificate, parse_private
 
 def get_encoded_data(data:bytes or str, encoding = 'file') -> bytes:
 	if encoding == 'file':
@@ -159,15 +164,15 @@ class KerberosCredential:
 				supp_enctypes[etype] = 1
 		
 		else:
-			if self.nopreauth is True:
-				supp_enctypes[EncryptionType.DES_CBC_CRC] = 1
-				supp_enctypes[EncryptionType.DES_CBC_MD4] = 1
-				supp_enctypes[EncryptionType.DES_CBC_MD5] = 1
-				supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
+			if self.nopreauth:
 				supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
-				supp_enctypes[EncryptionType.ARCFOUR_MD4] = 1
 				supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
 				supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
+				supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
+				supp_enctypes[EncryptionType.DES_CBC_MD5] = 1
+				supp_enctypes[EncryptionType.ARCFOUR_MD4] = 1
+				#supp_enctypes[EncryptionType.DES_CBC_MD4] = 1
+				#supp_enctypes[EncryptionType.DES_CBC_CRC] = 1
 
 			if self.kerberos_key_aes_256:
 				supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
@@ -175,14 +180,14 @@ class KerberosCredential:
 				supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
 
 			if self.password:
-				supp_enctypes[EncryptionType.DES_CBC_CRC] = 1
-				supp_enctypes[EncryptionType.DES_CBC_MD4] = 1
-				supp_enctypes[EncryptionType.DES_CBC_MD5] = 1
-				supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
 				supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
-				supp_enctypes[EncryptionType.ARCFOUR_MD4] = 1
 				supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
 				supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
+				supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
+				supp_enctypes[EncryptionType.DES_CBC_MD5] = 1
+				supp_enctypes[EncryptionType.ARCFOUR_MD4] = 1
+				#supp_enctypes[EncryptionType.DES_CBC_MD4] = 1
+				#supp_enctypes[EncryptionType.DES_CBC_CRC] = 1
 
 			if self.password or self.nt_hash or self.kerberos_key_rc4:
 				supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
@@ -191,8 +196,7 @@ class KerberosCredential:
 			if self.kerberos_key_des:
 				supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
 			
-			if self.certificate is not None:
-				supp_enctypes = collections.OrderedDict()
+			if self.certificate:
 				supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
 				supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
 
@@ -305,32 +309,71 @@ class KerberosCredential:
 		Tries to guess the correct username and domain from the current certificate,
 		if 'username' and/or 'domain' is set it will set those
 		"""
+		# In Microsoft ecosystem there seem to be two main naming conventions for their certificates' subjects:
+		# - For AD, the principal's distinguished name a.k.a NT-X500-PRINCIPAL (there are others too but not supported here)
+		# - For EntraID, something not standard like "<principal SID>/<principal EntraID GUID>/login.windows.net/<tenant GUID>/<principal email>" e.g:
+		# 	S-1-12-1-2190073739-1304874406-157446548-3757931170/c26d6885-f0df-4642-8207-5a38c93d2347/login.windows.net/e5bdbab1-eaba-4c81-b953-67e45605e0d8/testuser@bloody.corp
+		#
+		# minkrb doesn't handle as-req with NT-X500-PRINCIPAL so we'll try to extract the UPN/DNS in the SAN or the sAMAccountName in the CN as last resort hoping they're identical
+		#
+		# Mapping reference: "[MS-PKCA] 3.1.5.2.1 Certificate Mapping"
+
 		self.username = username
-		if username is None:
-			self.username = self.certificate.subject.native['common_name'].rsplit('@', 1)[0]
-		self.domain = domain
-		if domain is None:
-			dc = None
-			if 'domain_component' in self.certificate.issuer.native:
-				dc = self.certificate.issuer.native['domain_component']
-			if 'domain_component' in self.certificate.subject.native:
-				dc = self.certificate.subject.native['domain_component']
-			if dc is not None:
-				self.domain = '.'.join(dc[::-1])
+		upn = None
+		dnsname = None
+		cert_domain = None
+		UPN_OID = "1.3.6.1.4.1.311.20.2.3"
+		if not username:
+			if self.certificate.subject_alt_name_value:
+				for san in self.certificate.subject_alt_name_value:
+					if san.native.get("type_id") == UPN_OID:
+						upn = san.native["value"]
+						break
+					elif san.name == "dns_name":
+						dnsname = san.native["value"]
+						break
 			else:
-				raise Exception('Could\'t find proper domain name in the certificate! Please set it manually!')
+				# Multiple cn is possible, e.g. "CN=Test User,CN=Users,DC=corp,DC=local"
+				# but only the last one can possibly be the sAMAccountName
+				cn = self.certificate.subject.native["common_name"]
+				if isinstance(cn, list):
+					cn = cn[-1]
+				if '@' in cn:
+					upn = cn.rsplit('/', 1)[-1]
+				else:
+					self.username = cn
+			if upn:
+				# Even if self.username doesn't match sAMAccountName but match the first part of the UPN, kerberos will find the principal
+				self.username, cert_domain = upn.rsplit('@', 1)
+			elif dnsname:
+				self.username, cert_domain = dnsname.split('.', 1)
+				self.username += '$'
+		self.domain = domain
+		if not domain:
+			if cert_domain:
+				self.domain = cert_domain
+			else:
+				dc = None
+				if 'domain_component' in self.certificate.subject.native:
+					dc = self.certificate.subject.native['domain_component']
+				elif 'domain_component' in self.certificate.issuer.native:
+					dc = self.certificate.issuer.native['domain_component']
+				if dc is not None:
+					self.domain = '.'.join(dc[::-1])
+				else:
+					raise Exception('Could\'t find proper domain name in the certificate! Please set it manually!')
 
 	@staticmethod
 	def from_pem_data(certdata: str or bytes, keydata:str or bytes, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
-		from oscrypto.keys import parse_certificate, parse_private
-
 		if isinstance(certdata, str):
 			certdata = base64.b64decode(certdata.replace(' ','').replace('\r','').replace('\n','').replace('\t',''))
 		if isinstance(keydata, str):
 			keydata = base64.b64decode(keydata.replace(' ','').replace('\r','').replace('\n','').replace('\t',''))
 		k = KerberosCredential()
-		k.certificate = parse_certificate(certdata)
-		k.private_key = parse_private(keydata)
+		cert = cryptoX509.load_pem_x509_certificate(certdata)
+		cert_der = cert.public_bytes(encoding=Encoding.DER)
+		k.certificate = x509.Certificate.load(cert_der)
+		k.private_key = serialization.load_pem_private_key(keydata, password=None)
 		k.set_user_and_domain_from_cert(username = username, domain = domain)
 		k.set_dhparams(dhparams)
 		return k
@@ -368,8 +411,6 @@ class KerberosCredential:
 	@staticmethod
 	def from_pfx_string(data: str or bytes, password:str, dhparams:DirtyDH = None, username:str = None, domain:str = None) -> KerberosCredential:
 
-		from oscrypto.keys import parse_pkcs12
-
 		k = KerberosCredential()
 		if password is None:
 			password = b''
@@ -379,10 +420,10 @@ class KerberosCredential:
 		if isinstance(data, str):
 			data = base64.b64decode(data.replace(' ', '').replace('\r','').replace('\n','').encode())
 
-		# private_key is not actually the private key object but the privkey data because oscrypto privkey 
-		# cant be serialized so we cant make copy of it.
-		k.private_key, k.certificate, extra_certs = parse_pkcs12(data, password = password)
-		#k.private_key = load_private_key(privkeyinfo)
+
+		k.private_key, cert, extra_certs = pkcs12.load_key_and_certificates(data, password = password)
+		cert_der = cert.public_bytes(encoding=Encoding.DER)
+		k.certificate = x509.Certificate.load(cert_der)
 		
 		k.set_user_and_domain_from_cert(username = username, domain = domain)
 		k.set_dhparams(dhparams)
@@ -433,7 +474,6 @@ class KerberosCredential:
 		2. the certificate used to sign the data blob
 		3. the singed 'signed_attrs' structure (ASN1) which points to the "data" structure (in point 1)
 		"""
-		from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
 
 		
 		da = {}
@@ -453,7 +493,7 @@ class KerberosCredential:
 			cms.CMSAttribute({'type': 'message_digest', 'values': [hashlib.sha1(data).digest()]}), ### hash of the data, the data itself will not be signed, but this block of data will be.
 		]
 		si['signature_algorithm'] = algos.SignedDigestAlgorithm({'algorithm' : '1.2.840.113549.1.1.1'})
-		si['signature'] = rsa_pkcs1v15_sign(load_private_key(self.private_key),  cms.CMSAttributes(si['signed_attrs']).dump(), "sha1")
+		si['signature'] = self.private_key.sign(cms.CMSAttributes(si['signed_attrs']).dump(), padding.PKCS1v15() , hashes.SHA1())
 
 		ec = {}
 		ec['content_type'] = '1.3.6.1.5.2.3.1'

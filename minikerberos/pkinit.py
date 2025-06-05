@@ -19,8 +19,11 @@ from asn1crypto import core
 from asn1crypto import x509
 from asn1crypto import keys
 
-from oscrypto.keys import parse_pkcs12
-from oscrypto.asymmetric import rsa_pkcs1v15_sign, load_private_key
+from cryptography.hazmat.primitives.asymmetric.dh import generate_parameters
+from cryptography.hazmat.primitives.serialization import pkcs12
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.serialization import Encoding
 
 from minikerberos.protocol.constants import NAME_TYPE, MESSAGE_TYPE, PaDataType
 from minikerberos.protocol.encryption import Enctype, _checksum_table, _enctype_table, Key
@@ -87,7 +90,6 @@ class DirtyDH:
 
 class PKINIT:
 	def __init__(self):
-		self.privkeyinfo = None
 		self.certificate = None
 		self.extra_certs = None
 		self.user_sid = None
@@ -118,32 +120,80 @@ class PKINIT:
 		if isinstance(pfxpass, str):
 			pfxpass = pfxpass.encode()
 		with open(pfxfile, 'rb') as f:
-			pkinit.privkeyinfo, pkinit.certificate, pkinit.extra_certs = parse_pkcs12(f.read(), password = pfxpass)
-			pkinit.privkey = load_private_key(pkinit.privkeyinfo)
+			pkinit.privkey, cert, pkinit.extra_certs = pkcs12.load_key_and_certificates(f.read(), password = pfxpass)
+			cert_der = cert.public_bytes(encoding=Encoding.DER)
+			pkinit.certificate = x509.Certificate.load(cert_der)
+
 		#print('pfx12 loaded!')
 		pkinit.setup(dh_params = dh_params)
 		return pkinit
 	
 	def setup(self, dh_params = None):
-		# parsing ceritficate to get basic info that will be needed to construct the asreq
-		# this has two components
-		for x in self.certificate.subject.native['common_name']:
-			if x.startswith("S-1-12"):
-				self.user_sid = x
-			elif x.find('@') != -1:
-				self.user_name = x
+		# In Microsoft ecosystem there seem to be two main naming conventions for their certificates' subjects:
+		# - For AD, the principal's distinguished name a.k.a NT-X500-PRINCIPAL (there are others too but not supported here)
+		# - For EntraID, something not standard like "<principal SID>/<principal EntraID GUID>/login.windows.net/<tenant GUID>/<principal email>" e.g:
+		# 	S-1-12-1-2190073739-1304874406-157446548-3757931170/c26d6885-f0df-4642-8207-5a38c93d2347/login.windows.net/e5bdbab1-eaba-4c81-b953-67e45605e0d8/testuser@bloody.corp
+		#
+		# minkrb doesn't handle as-req with NT-X500-PRINCIPAL so we'll try to extract the UPN/DNS in the SAN or the sAMAccountName in the CN as last resort hoping they're identical
+		#
+		# Mapping reference: "[MS-PKCA] 3.1.5.2.1 Certificate Mapping"
+		upn = None
+		dnsname = None
+		cert_domain = None
+		UPN_OID = "1.3.6.1.4.1.311.20.2.3"
 
-		self.issuer = self.certificate.issuer.native['common_name']
-		self.cname = '\\'.join(['AzureAD', self.issuer, self.user_sid])
+		if self.certificate.subject_alt_name_value:
+			for san in self.certificate.subject_alt_name_value:
+				if san.native.get("type_id") == UPN_OID:
+					upn = san.native["value"]
+					break
+				elif san.name == "dns_name":
+					dnsname = san.native["value"]
+					break
+		else:
+			# Multiple cn is possible, e.g. "CN=Test User,CN=Users,DC=corp,DC=local"
+			# but only the last one can possibly be the sAMAccountName
+			cn = self.certificate.subject.native["common_name"]
+			if isinstance(cn, list):
+				cn = cn[-1]
+			# potentially an Azure AD certificate, in this case domain is AzureAD
+			if '@' in cn:
+				upn = cn.rsplit('/', 1)[-1]
+			else:
+				self.cname = cn
+		if upn:
+			# Even if self.username doesn't match sAMAccountName but match the first part of the UPN, kerberos will find the principal
+			self.cname, cert_domain = upn.rsplit('@', 1)[1]
+		elif dnsname:
+			self.cname, cert_domain = dnsname.split('.', 1)
+			self.cname += '$'
 
-		#print('cert issuer: %s' % pkinit.issuer)
-		#print('cert user_name: %s' % pkinit.user_name)
-		#print('cert user_sid: %s' % pkinit.user_sid)
-		#print('cert cname: %s' % pkinit.cname)
-
+		if not self.target:
+			if cert_domain:
+				self.target = cert_domain
+			else:
+				dc = None
+				if 'domain_component' in self.certificate.subject.native:
+					dc = self.certificate.subject.native['domain_component']
+				elif 'domain_component' in self.certificate.issuer.native:
+					dc = self.certificate.issuer.native['domain_component']
+				if dc is not None:
+					self.target = '.'.join(dc[::-1])
+				else:
+					raise Exception('Could\'t find proper domain name in the certificate! Please set it manually!')
+		
 		if dh_params is None:
 			print('Generating DH params...')
-			self.diffie = DirtyDH.from_dict( generate_dh_parameters(1024).native)
+			# Or maybe use set_dhparams?
+			# Generate DH parameters
+			parameters = generate_parameters(generator=2, key_size=1024)
+			# Convert the parameters to a dictionary
+			dh_params = {
+				"p": parameters.parameter_numbers().p,
+				"g": parameters.parameter_numbers().g
+			}
+			# Use the generated parameters
+			self.diffie = DirtyDH.from_dict(dh_params)
 			print('DH params generated.')
 		else:
 			#print('Loading default DH params...')
@@ -348,7 +398,7 @@ class PKINIT:
 			cms.CMSAttribute({'type': 'message_digest', 'values': [hashlib.sha1(data).digest()]}), ### hash of the data, the data itself will not be signed, but this block of data will be.
 		]
 		si['signature_algorithm'] = algos.SignedDigestAlgorithm({'algorithm' : '1.2.840.113549.1.1.1'})
-		si['signature'] = rsa_pkcs1v15_sign(self.privkey,  cms.CMSAttributes(si['signed_attrs']).dump(), "sha1")
+		si['signature'] = self.privkey.sign(cms.CMSAttributes(si['signed_attrs']).dump(), padding.PKCS1v15() , hashes.SHA1())
 
 		ec = {}
 		ec['content_type'] = '1.3.6.1.5.2.3.1'

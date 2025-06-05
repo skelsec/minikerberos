@@ -107,13 +107,13 @@ class KerberosClientFactory:
 		if self.secret_type == KerberosSecretType.KIRBI:
 			return KerberosCredential.from_kirbi(self.secret)
 		if self.secret_type == KerberosSecretType.PFXSTR:
-			return KerberosCredential.from_pfx_string(self.certdata, self.secret)
+			return KerberosCredential.from_pfx_string(self.certdata, self.secret, username = self.username, domain = self.domain)
 		if self.secret_type == KerberosSecretType.PFX:
 			return KerberosCredential.from_pfx_file(self.certdata, self.secret, username=self.username, domain=self.domain)
 		if self.secret_type == KerberosSecretType.CCACHE:
 			return KerberosCredential.from_ccache(self.secret, principal=self.username, realm=self.domain)
 		if self.secret_type == KerberosSecretType.PEM:
-			return KerberosCredential.from_pem_file(self.certdata, self.keydata)
+			return KerberosCredential.from_pem_file(self.certdata, self.keydata, username = self.username, domain = self.domain)
 		if self.secret_type == KerberosSecretType.CERTSTORE:
 			return KerberosCredential.from_windows_certstore(self.commonname, certstore_name = self.certstore, dhparams = None, username = self.username, domain = self.domain)
 
@@ -246,7 +246,7 @@ class KerberosClientFactory:
 			raise Exception('Missing target hostname or IP!')
 		
 		if res.secret is None and res.secret_type != KerberosSecretType.NONE:
-			if res.secret_type not in [KerberosSecretType.PEM, KerberosSecretType.CERTSTORE]:
+			if res.secret_type not in [KerberosSecretType.PFXSTR, KerberosSecretType.PFX ,KerberosSecretType.PEM, KerberosSecretType.CERTSTORE]:
 				raise Exception('Missing secret/password!')
 		
 		return res
