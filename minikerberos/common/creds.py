@@ -64,19 +64,24 @@ class KerberosCredential:
 		self.nopreauth = False
 		self.override_etypes:List[EncryptionType] = []
 
-	def get_preferred_enctype(self, server_enctypes:List[EncryptionType]) -> EncryptionType:
+	def get_common_enctypes(self, server_enctypes:List[EncryptionType]) -> List[EncryptionType]:
 		client_enctypes = self.get_supported_enctypes(as_int=False)
 		common_enctypes = list(set([s_enctype for s_enctype in server_enctypes]) & set(client_enctypes))
-
-		for c_enctype in client_enctypes:
-			if c_enctype in common_enctypes:
-				return c_enctype
-
-		raise Exception('No common supported enctypes! Server: %s Client: %s' % (
+		if len(common_enctypes) == 0:
+			raise Exception('No common supported enctypes! Server: %s Client: %s' % (
 				', '.join([s_enctype.name for s_enctype in server_enctypes]),
 				', '.join([c_enctype.name for c_enctype in client_enctypes])
 			)
 		)
+		return common_enctypes
+
+	def get_preferred_enctype(self, server_enctypes:List[EncryptionType]) -> EncryptionType:
+		client_enctypes = self.get_supported_enctypes(as_int=False)
+		common_enctypes = self.get_common_enctypes(server_enctypes)
+
+		for c_enctype in client_enctypes:
+			if c_enctype in common_enctypes:
+				return c_enctype
 
 	def get_key_for_enctype(self, etype:EncryptionType, salt:bytes = None) -> bytes:
 		"""
@@ -106,6 +111,10 @@ class KerberosCredential:
 			elif self.password:
 				if isinstance(self.password, str):
 					pw = self.password.encode('utf-16-le')
+				elif isinstance(self.password, bytes):
+					pw = self.password
+				else:
+					raise Exception('Unknown password type: %s' % type(self.password))
 				self.nt_hash = hashlib.md4(pw).hexdigest().upper()
 				return bytes.fromhex(self.nt_hash)
 			else:
@@ -139,6 +148,10 @@ class KerberosCredential:
 				pw = self.password
 				if isinstance(self.password, str):
 					pw = self.password.encode('utf-16-le')
+				elif isinstance(self.password, bytes):
+					pw = self.password
+				else:
+					raise Exception('Unknown password type: %s' % type(self.password))
 				self.nt_hash = hashlib.md4(pw).hexdigest().upper()
 				return bytes.fromhex(self.nt_hash)[:8]
 			else:
@@ -196,6 +209,16 @@ class KerberosCredential:
 				supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
 				supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
 
+		
+		if self.ccache is not None and len(supp_enctypes) == 0:
+			# only ccache is used, and at this point we have no idea what encryption types are supported
+			# so we need to use the encryption types from the ccache
+			#supp_enctypes = self.ccache.get_supported_enctypes()
+			supp_enctypes = {
+				EncryptionType.AES256_CTS_HMAC_SHA1_96: 1,
+				EncryptionType.AES128_CTS_HMAC_SHA1_96: 1,
+				EncryptionType.ARCFOUR_HMAC_MD5: 1,
+			}
 
 		if as_int == True:
 			return [etype.value for etype in supp_enctypes]

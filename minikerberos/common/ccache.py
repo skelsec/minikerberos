@@ -646,7 +646,6 @@ class CCACHE:
 			if ticket_for.upper() == str(spn).upper():
 				logger.debug('Found TGS for SPN %s' % ticket_for)
 				return tgs, keystruct, None
-		
 		if strict is True:
 			return None, None, Exception('No TGS found for SPN %s' % spn)
 		

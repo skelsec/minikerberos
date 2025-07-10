@@ -73,6 +73,7 @@ async def kerberoast(factory:KerberosClientFactory, usernames:List[str], domain:
 			spn = KerberosSPN.from_upn('%s@%s' % (username, domain))
 			kcommnew = kcomm
 			if cross_domain is True:
+				#print('Getting referral ticket for %s' % spn.domain)
 				_, _, _, new_factory = await kcomm.get_referral_ticket(spn.domain)
 				kcommnew = new_factory.get_client()
 			tgs, _, _ = await kcommnew.get_TGS(spn, override_etype = override_etype)

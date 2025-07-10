@@ -54,6 +54,7 @@ class AIOKerberosClient:
 		self.kerberos_cipher_type = None
 		self.kerberos_key = None
 		self.server_salt = None
+		self.server_supp_enc_methods = None
 
 	async def __aenter__(self):
 		return self
@@ -81,6 +82,7 @@ class AIOKerberosClient:
 				timestamp = PA_ENC_TS_ENC({'patimestamp': now.replace(microsecond=0), 'pausec': now.microsecond}).dump()
 				self.kerberos_cipher = _enctype_table[supported_encryption_method.value]
 				self.kerberos_cipher_type = supported_encryption_method.value
+				self.server_salt = self.server_supp_enc_methods[supported_encryption_method].encode() if self.server_supp_enc_methods[supported_encryption_method] is not None else None
 				self.kerberos_key = Key(self.kerberos_cipher.enctype, self.credential.get_key_for_enctype(supported_encryption_method, salt = self.server_salt))
 				enc_timestamp = self.kerberos_cipher.encrypt(self.kerberos_key, 1, timestamp, None)
 			else:
@@ -223,7 +225,7 @@ class AIOKerberosClient:
 	def select_preferred_encryption_method(self, rep):
 		#now getting server's supported encryption methods
 		
-		supp_enc_methods = collections.OrderedDict()
+		self.server_supp_enc_methods = collections.OrderedDict()
 		for enc_method in METHOD_DATA.load(rep['e-data']).native:
 			data_type = PaDataType(enc_method['padata-type'])
 			
@@ -235,17 +237,14 @@ class AIOKerberosClient:
 					enc_info_list = ETYPE_INFO2.load(enc_method['padata-value'])
 		
 				for enc_info in enc_info_list.native:
-					supp_enc_methods[EncryptionType(enc_info['etype'])] = enc_info['salt']
+					self.server_supp_enc_methods[EncryptionType(enc_info['etype'])] = enc_info['salt']
 					logger.debug('Server supports encryption type %s with salt %s' % (EncryptionType(enc_info['etype']).name, enc_info['salt']))
 		
-		preferred_enc_type = self.credential.get_preferred_enctype(supp_enc_methods)
-		if preferred_enc_type not in supp_enc_methods:
+		common_enctypes = self.credential.get_common_enctypes(self.server_supp_enc_methods)
+		preferred_enc_type = self.credential.get_preferred_enctype(self.server_supp_enc_methods)
+		if preferred_enc_type not in self.server_supp_enc_methods:
 			raise Exception('Preferred enc type not in supported enctypes')
-		salt = supp_enc_methods[preferred_enc_type]
-		if salt is not None:
-			salt = salt.encode()
-		self.server_salt = salt #enc_info['salt'].encode()
-		return preferred_enc_type
+		return preferred_enc_type, common_enctypes
 
 
 	async def get_TGT(self, override_etype = None, decrypt_tgt = True, kdcopts = ['forwardable','renewable','proxiable'], override_sname:KerberosSPN = None, with_pac:bool = True):
@@ -288,6 +287,10 @@ class AIOKerberosClient:
 			if len(kdc_req_body['etype']) == 0:
 				kdc_req_body['etype'] = [18,17] # 23 breaks...
 
+		# sanity check
+		if kdc_req_body['etype'] is None or len(kdc_req_body['etype']) == 0:
+			kdc_req_body['etype'] = [23,17,18]
+
 		pa_data_1 = {}
 		if with_pac is True:
 			pa_data_1['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
@@ -326,10 +329,28 @@ class AIOKerberosClient:
 			logger.debug('Got reply from server, askig to provide auth data')
 
 			preauth_rep = None
-			supported_encryption_method = self.select_preferred_encryption_method(rep) #must be here regardless of override_etype, because of salt!
+			supported_encryption_method, all_common_enctypes = self.select_preferred_encryption_method(rep) #must be here regardless of override_etype, because of salt!
 
 			if override_etype is None:
-				preauth_rep = await self.do_preauth(supported_encryption_method, with_pac=with_pac)
+				try:
+					preauth_rep = await self.do_preauth(supported_encryption_method, with_pac=with_pac)
+				except KerberosError as e:
+					# even if we selected the COMMON preferred encryption method, the server might not support it
+					# why? dunno, but it happens
+					if e.errorcode != KerberosErrorCode.KDC_ERR_ETYPE_NOTSUPP:
+						raise e
+					
+					# remove the preferred encryption method
+					all_common_enctypes.remove(supported_encryption_method)
+					for etype in all_common_enctypes:
+						try:
+							preauth_rep = await self.do_preauth(etype, with_pac=with_pac)
+							break
+						except KerberosError as e:
+							if e.errorcode != KerberosErrorCode.KDC_ERR_ETYPE_NOTSUPP:
+								raise e
+					else:
+						raise Exception('Failed to get TGT with any of the provided etypes!')
 				
 			else:
 				if isinstance(override_etype, list) is False:
@@ -398,7 +419,11 @@ class AIOKerberosClient:
 			if err is not None:
 				raise err
 			
+			
 			key = Key(keystruct['keytype'], keystruct['keyvalue'])
+			# we must add the key back to the tgs
+			keydata = EncryptionKey({'keytype': keystruct['keytype'], 'keyvalue': keystruct['keyvalue']}).dump()
+			tgs['enc-part'] = EncryptedData({'etype': 0, 'cipher': keydata})
 			tgs = TGS_REP(tgs).native
 			return tgs, tgs['enc-part'], key, None			
 		except Exception as e:
@@ -946,7 +971,7 @@ class AIOKerberosClient:
 		session_key = Key(cipher.enctype, encasrep['key']['keyvalue'])
 		return encasrep, session_key, cipher
 	
-	async def get_referral_ticket(self, target_domain, target_ip = None):
+	async def get_referral_ticket(self, target_domain, target_ip = None, prev_sname = None):
 		"""Cross domain TGT referral"""
 		"""If target_ip is not set, the target domain will be used as the hostname for the newly created connection"""
 		from minikerberos.common.factory import KerberosClientFactory
@@ -963,18 +988,28 @@ class AIOKerberosClient:
 		logger.debug('Got referral ticket!')
 
 		for _ in range(10): # 10 is arbitrary, but I fail to imagine a scenario where we would need more than 10 referrals
-			if encpart['sname']['name-string'][1].upper() == target_domain.upper():
+			sname = encpart['sname']['name-string'][1].upper()
+			if prev_sname == sname:
+				# the original domain name was not canonical but we got the same krbtgt, so we can use this ticket
+				break
+			
+			prev_sname = sname
+			if sname == target_domain.upper():
 				break
 
 			# otherwise we have to do this again with the new krbtgt
-			logger.debug('The referral ticket is not for the target domain, getting new referral ticket from %s' % encpart['sname']['name-string'][1])
+			logger.debug('The referral ticket is not for the target domain, getting new referral ticket from %s' % sname)
 			
 			kirbi = Kirbi.from_ticketdata(tgs, encpart)
-			newt = self.target.get_newtarget(encpart['sname']['name-string'][1], port=88)
+			newt = self.target.get_newtarget(sname, port=88)
 			newc = KerberosCredential.from_kirbi(kirbi, encoding='kirbi')
-			new_factory = KerberosClientFactory(newt, newc, newt.proxies)
-			newclient = new_factory.get_client()
-			tgs, encpart, key, new_factory = await newclient.get_referral_ticket(target_domain, target_ip)
+			try:
+				new_factory = KerberosClientFactory(newt, newc, newt.proxies)
+				newclient = new_factory.get_client()
+				tgs, encpart, key, new_factory = await newclient.get_referral_ticket(target_domain, target_ip, prev_sname)
+			except Exception as e:
+				# wrapping it here in an exception so that the domain name information can be propagated up
+				raise Exception('Failed to get referral ticket from domain "%s"! Reason: %s' % (sname, str(e)))
 
 		kirbi = Kirbi.from_ticketdata(tgs, encpart)
 		target_addr = target_domain
