@@ -430,7 +430,7 @@ class AIOKerberosClient:
 		except Exception as e:
 			return None, None, None, e
 
-	async def get_TGS(self, spn_user:KerberosSPN, override_etype = None, is_linux = False, flags = ['forwardable','renewable','renewable_ok', 'canonicalize']):
+	async def get_TGS(self, spn_user:KerberosSPN, override_etype = None, is_linux = False, flags = ['forwardable','renewable','renewable-ok', 'canonicalize']):
 		"""
 		Requests a TGS ticket for the specified user.
 		Retruns the TGS ticket, end the decrpyted encTGSRepPart.
