@@ -338,7 +338,7 @@ class AIOKerberosClient:
 				except KerberosError as e:
 					# even if we selected the COMMON preferred encryption method, the server might not support it
 					# why? dunno, but it happens
-					if e.errorcode != KerberosErrorCode.KDC_ERR_ETYPE_NOTSUPP:
+					if e.errorcode != KerberosErrorCode.KDC_ERR_ETYPE_NOSUPP:
 						raise e
 					
 					# remove the preferred encryption method
@@ -348,7 +348,7 @@ class AIOKerberosClient:
 							preauth_rep = await self.do_preauth(etype, with_pac=with_pac)
 							break
 						except KerberosError as e:
-							if e.errorcode != KerberosErrorCode.KDC_ERR_ETYPE_NOTSUPP:
+							if e.errorcode != KerberosErrorCode.KDC_ERR_ETYPE_NOSUPP:
 								raise e
 					else:
 						raise Exception('Failed to get TGT with any of the provided etypes!')
@@ -361,7 +361,7 @@ class AIOKerberosClient:
 					try:
 						preauth_rep = await self.do_preauth(etype, with_pac=with_pac)
 					except KerberosError as e:
-						if e.errorcode != KerberosErrorCode.KDC_ERR_ETYPE_NOTSUPP:
+						if e.errorcode != KerberosErrorCode.KDC_ERR_ETYPE_NOSUPP:
 							raise e
 						
 						logger.debug('Failed to get TGT with etype %s' % etype.name)
