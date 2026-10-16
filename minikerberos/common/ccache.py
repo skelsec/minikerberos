@@ -161,7 +161,7 @@ class Credential:
 		if self.time.endtime != 0:
 			krbcredinfo['endtime'] = datetime.datetime.fromtimestamp(self.time.endtime, datetime.timezone.utc)
 		if self.time.renew_till != 0: #this parameter is not mandatory, and sometimes it's not present
-			krbcredinfo['renew-till'] = datetime.datetime.fromtimestamp(self.time.authtime, datetime.timezone.utc)
+			krbcredinfo['renew-till'] = datetime.datetime.fromtimestamp(self.time.renew_till, datetime.timezone.utc)
 		krbcredinfo['srealm'] = self.server.realm.to_string()
 		krbcredinfo['sname'] = self.server.to_asn1()[0]
 		
@@ -333,8 +333,8 @@ class Times:
 			if 'starttime' in enc_as_rep_part and enc_as_rep_part['starttime'] else 0
 		t.endtime = dt_to_kerbtime(enc_as_rep_part['endtime']) \
 			if 'endtime' in enc_as_rep_part and enc_as_rep_part['endtime'] else 0
-		t.renew_till = dt_to_kerbtime(enc_as_rep_part['renew_till']) \
-			if 'renew_till' in enc_as_rep_part and enc_as_rep_part['renew_till'] else 0
+		t.renew_till = dt_to_kerbtime(enc_as_rep_part['renew-till']) \
+			if 'renew-till' in enc_as_rep_part and enc_as_rep_part['renew-till'] else 0
 		return t
 	
 	@staticmethod
