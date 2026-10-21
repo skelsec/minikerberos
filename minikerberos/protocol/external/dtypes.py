@@ -13,10 +13,7 @@
 #   Alberto Solino (@agsolino)
 #
 
-from __future__ import division
-from __future__ import print_function
 from struct import pack
-from six import binary_type
 
 from minikerberos.protocol.external.ndr import NDRULONG, NDRUHYPER, NDRSHORT, NDRLONG, NDRPOINTER, NDRUniConformantArray, \
     NDRUniFixedArray, NDR, NDRHYPER, NDRSMALL, NDRPOINTERNULL, NDRSTRUCT, \
@@ -110,7 +107,7 @@ class STR(NDRSTRUCT):
     def __setitem__(self, key, value):
         if key == 'Data':
             try:
-                if not isinstance(value, binary_type):
+                if not isinstance(value, bytes):
                     self.fields[key] = value.encode('utf-8')
                 else:
                     # if it is a binary type (str in Python 2, bytes in Python 3), then we assume it is a raw buffer
