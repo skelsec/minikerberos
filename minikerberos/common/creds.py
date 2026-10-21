@@ -208,6 +208,11 @@ class KerberosCredential:
 				supp_enctypes = collections.OrderedDict()
 				supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
 				supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
+				# RC4 as a last resort so PKINIT still works against accounts that
+				# have no AES keys (msDS-SupportedEncryptionTypes without AES bits).
+				# AES stays first in the list => preferred whenever the KDC offers
+				# it; RC4 is only selected when it is the sole common enctype.
+				supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
 
 		
 		if self.ccache is not None and len(supp_enctypes) == 0:

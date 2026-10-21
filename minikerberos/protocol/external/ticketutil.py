@@ -11,7 +11,6 @@ def get_NT_from_PAC(pkinit_tkey, decticket:EncTicketPart, truncated_keydata=None
 			truncated_keydata = pkinit_tkey
 		if truncated_keydata is None:
 			raise Exception("Missing tkey! Is this a PKINIT session?")
-		key = Key(18, truncated_keydata)
 		pacType = PACTYPE(adIfRelevant.native[0]['ad-data'])
 		buff = pacType['Buffers']
 		creds = []
@@ -23,6 +22,12 @@ def get_NT_from_PAC(pkinit_tkey, decticket:EncTicketPart, truncated_keydata=None
 				credinfo = PAC_CREDENTIAL_INFO(data)
 				newCipher = _enctype_table[credinfo['EncryptionType']]
 
+				# The PAC_CREDENTIAL_INFO is encrypted with the AS reply key using
+				# the enctype advertised in credinfo['EncryptionType'] -- which for
+				# a PKINIT session equals the DH-derived reply key's enctype. Build
+				# the key with that enctype so RC4 reply keys (16 bytes) work too,
+				# instead of assuming AES256 (which raised "Wrong key length").
+				key = Key(newCipher.enctype, truncated_keydata)
 				out = newCipher.decrypt(key, 16, credinfo['SerializedData'])
 				type1 = TypeSerialization1(out)
 				# I'm skipping here 4 bytes with its the ReferentID for the pointer
