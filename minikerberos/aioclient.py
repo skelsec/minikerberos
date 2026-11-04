@@ -639,6 +639,10 @@ class AIOKerberosClient:
 		
 		###### Calculating checksum data
 		
+		# PA-FOR-USER checksum, byte-exact with impacket's getST.py / Rubeus:
+		# S4UByteArray = name-type (4 bytes little-endian, NT_PRINCIPAL = 1) +
+		#                userName (ASCII) + userRealm (ASCII) + authPackage (ASCII)
+		# No length prefixes, no UTF-16 - the Windows KDC computes exactly this.
 		S4UByteArray = NAME_TYPE.PRINCIPAL.value.to_bytes(4, 'little', signed = False)
 		S4UByteArray += user_to_impersonate.username.encode()
 		S4UByteArray += user_to_impersonate.domain.encode()
@@ -646,9 +650,14 @@ class AIOKerberosClient:
 		logger.debug('[S4U2self] S4UByteArray: %s' % S4UByteArray.hex())
 		logger.debug('[S4U2self] S4UByteArray: %s' % S4UByteArray)
 		
-		# PA-FOR-USER checksum uses key usage KERB_NON_KERB_CKSUM_SALT (17) for ALL
-		# enctypes, but the checksum ALGORITHM must match the TGT session key. Hardcoding
-		# HMAC_MD5 (RC4) breaks S4U2self against AES-only / RC4-disabled accounts.
+		# PA-FOR-USER checksum: key usage KERB_NON_KERB_CKSUM_SALT (17) for ALL
+		# enctypes, with the checksum ALGORITHM matched to the TGT session key.
+		# Verified live against a Windows KDC with BOTH RC4 and AES256 session
+		# keys: the Windows KDC verifies per the sent cksumtype, so both the
+		# etype-matched variants below and plain raw-key HMAC-MD5 (what impacket
+		# getST.py / Rubeus send) are accepted. The etype-matched variant is kept
+		# because MIT/Heimdal KDCs REQUIRE the checksum type to match the key
+		# enctype (krb5_c_verify_checksum rejects HMAC_MD5 with an AES key).
 		if self.kerberos_session_key.enctype == Enctype.AES256:
 			checksum_type = CKSUMTYPE('HMAC_SHA1_96_AES_256')
 			chksum_data = _SHA1AES256.checksum(self.kerberos_session_key, 17, S4UByteArray)

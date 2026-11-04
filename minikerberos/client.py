@@ -14,7 +14,7 @@ from minikerberos.protocol.asn1_structs import METHOD_DATA, ETYPE_INFO, ETYPE_IN
 	PA_FOR_USER_ENC, PA_PAC_OPTIONS, PA_PAC_OPTIONSTypes, EncTicketPart
 
 from minikerberos.protocol.errors import KerberosErrorCode, KerberosError
-from minikerberos.protocol.encryption import Key, _enctype_table, _HMACMD5, Enctype
+from minikerberos.protocol.encryption import Key, _enctype_table, _HMACMD5, Enctype, _SHA1AES128,_SHA1AES256
 from minikerberos.protocol.constants import PaDataType, EncryptionType, NAME_TYPE, MESSAGE_TYPE
 from minikerberos.protocol.structures import AuthenticatorChecksum
 from minikerberos.protocol.rfc4556 import PKAuthenticator, AuthPack, PA_PK_AS_REP, KDCDHKeyInfo, PA_PK_AS_REQ
@@ -552,6 +552,10 @@ class KerbrosClient:
 		
 		###### Calculating checksum data
 		
+		# PA-FOR-USER checksum, byte-exact with impacket's getST.py / Rubeus:
+		# S4UByteArray = name-type (4 bytes little-endian, NT_PRINCIPAL = 1) +
+		#                userName (ASCII) + userRealm (ASCII) + authPackage (ASCII)
+		# No length prefixes, no UTF-16 - the Windows KDC computes exactly this.
 		S4UByteArray = NAME_TYPE.PRINCIPAL.value.to_bytes(4, 'little', signed = False)
 		S4UByteArray += user_to_impersonate.username.encode()
 		S4UByteArray += user_to_impersonate.domain.encode()
@@ -559,12 +563,26 @@ class KerbrosClient:
 		logger.debug('[S4U2self] S4UByteArray: %s' % S4UByteArray.hex())
 		logger.debug('[S4U2self] S4UByteArray: %s' % S4UByteArray)
 		
-		chksum_data = _HMACMD5.checksum(self.kerberos_session_key, 17, S4UByteArray)
+		# PA-FOR-USER checksum: key usage KERB_NON_KERB_CKSUM_SALT (17) for ALL
+		# enctypes, with the checksum ALGORITHM matched to the TGT session key
+		# (see aioclient.py S4U2self for the full rationale - Windows KDCs accept
+		# the sent cksumtype either way, MIT/Heimdal require an etype match).
+		if self.kerberos_session_key.enctype == Enctype.AES256:
+			checksum_type = CKSUMTYPE('HMAC_SHA1_96_AES_256')
+			chksum_data = _SHA1AES256.checksum(self.kerberos_session_key, 17, S4UByteArray)
+		elif self.kerberos_session_key.enctype == Enctype.AES128:
+			checksum_type = CKSUMTYPE('HMAC_SHA1_96_AES_128')
+			chksum_data = _SHA1AES128.checksum(self.kerberos_session_key, 17, S4UByteArray)
+		elif self.kerberos_session_key.enctype == Enctype.RC4:
+			checksum_type = CKSUMTYPE('HMAC_MD5')
+			chksum_data = _HMACMD5.checksum(self.kerberos_session_key, 17, S4UByteArray)
+		else:
+			raise NotImplementedError('Unsupported S4U2self session-key enctype: %s' % self.kerberos_session_key.enctype)
 		logger.debug('[S4U2self] chksum_data: %s' % chksum_data.hex())
 		
 		
 		chksum = {}
-		chksum['cksumtype'] = int(CKSUMTYPE('HMAC_MD5'))
+		chksum['cksumtype'] = int(checksum_type)
 		chksum['checksum'] = chksum_data
 
 		

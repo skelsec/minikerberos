@@ -246,7 +246,15 @@ class KerberosClientFactory:
 			raise Exception('Missing target hostname or IP!')
 		
 		if res.secret is None and res.secret_type != KerberosSecretType.NONE:
-			if res.secret_type not in [KerberosSecretType.PEM, KerberosSecretType.CERTSTORE]:
+			# Certificate-based auth (PFX/PEM/CERTSTORE) may legitimately have no
+			# secret/password set: a PFX file is frequently stored without a
+			# password, and PEM/CERTSTORE never use the URL password field.
+			if res.secret_type not in [
+				KerberosSecretType.PEM,
+				KerberosSecretType.CERTSTORE,
+				KerberosSecretType.PFX,
+				KerberosSecretType.PFXSTR,
+			]:
 				raise Exception('Missing secret/password!')
 		
 		return res

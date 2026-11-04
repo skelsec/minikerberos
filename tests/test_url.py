@@ -3,6 +3,7 @@ import os
 
 from minikerberos.common.factory import KerberosClientFactory
 from minikerberos.common.ccache import CCACHE
+from minikerberos.common.constants import KerberosSecretType
 from .config import *
 
 
@@ -149,6 +150,45 @@ def test_url_nopreauth():
 #	target2 = url2.get_target()
 #	assert str(cred1) == str(cred2)
 #	assert str(target1) == str(target2)
+
+def test_url_pfx_no_password():
+	# A PFX file is frequently stored without a password. The URL parser must not
+	# require a secret/password for PFX-based auth.
+	urlstr = 'kerberos+pfx://TEST\\victim@10.10.10.2/?certdata=a.pfx'
+	url = KerberosClientFactory.from_url(urlstr)
+	assert url.secret_type == KerberosSecretType.PFX
+	assert url.secret is None
+	assert url.certdata == 'a.pfx'
+
+def test_url_pfx_empty_password():
+	urlstr = 'kerberos+pfx://TEST\\victim:@10.10.10.2/?certdata=a.pfx'
+	url = KerberosClientFactory.from_url(urlstr)
+	assert url.secret_type == KerberosSecretType.PFX
+	assert url.secret == ''
+
+def test_url_pfx_with_password():
+	urlstr = 'kerberos+pfx://TEST\\victim:admin@10.10.10.2/?certdata=a.pfx'
+	url = KerberosClientFactory.from_url(urlstr)
+	assert url.secret_type == KerberosSecretType.PFX
+	assert url.secret == 'admin'
+
+def test_url_pfxstr_no_password():
+	urlstr = 'kerberos+pfxstr://TEST\\victim@10.10.10.2/?certdata=BASE64DATA'
+	url = KerberosClientFactory.from_url(urlstr)
+	assert url.secret_type == KerberosSecretType.PFXSTR
+	assert url.secret is None
+
+def test_url_password_still_requires_secret():
+	# Narrow the fix: non-certificate auth types must still require a secret.
+	for urlstr in [
+		'kerberos+password://TEST\\victim@10.10.10.2',
+		'kerberos+rc4://TEST\\victim@10.10.10.2',
+	]:
+		try:
+			KerberosClientFactory.from_url(urlstr)
+			assert False, 'expected Missing secret/password! for %s' % urlstr
+		except Exception as e:
+			assert 'Missing secret/password!' in str(e)
 
 if __name__ == '__main__':
 	test_url_certstore()
