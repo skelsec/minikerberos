@@ -219,3 +219,37 @@ def test_credential_summary():
 #
 #if __name__ == '__main__':
 #	test_credential_kirbi()
+
+def test_times_from_asn1_reads_renew_till():
+	# The EncKDCRepPart field is spelled 'renew-till' in the ASN.1 definition
+	# (see protocol/asn1_structs.py), so that is the key from_asn1 has to look
+	# up. It used to look for 'renew_till', which never matched and silently
+	# left renew_till at 0.
+	import datetime
+	from minikerberos.common.utils import dt_to_kerbtime
+
+	start = datetime.datetime(2025, 8, 8, 12, 0, 0, tzinfo=datetime.timezone.utc)
+	end = start + datetime.timedelta(hours=10)
+	renew = start + datetime.timedelta(days=7)
+
+	enc_as_rep_part = {
+		'authtime': start,
+		'starttime': start,
+		'endtime': end,
+		'renew-till': renew,
+	}
+	times = Times.from_asn1(enc_as_rep_part)
+
+	assert times.authtime == dt_to_kerbtime(start)
+	assert times.starttime == dt_to_kerbtime(start)
+	assert times.endtime == dt_to_kerbtime(end)
+	assert times.renew_till == dt_to_kerbtime(renew)
+	assert times.renew_till != 0
+
+
+def test_times_from_asn1_without_renew_till_is_zero():
+	import datetime
+
+	start = datetime.datetime(2025, 8, 8, 12, 0, 0, tzinfo=datetime.timezone.utc)
+	times = Times.from_asn1({'authtime': start, 'starttime': start, 'endtime': start})
+	assert times.renew_till == 0

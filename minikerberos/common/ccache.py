@@ -333,8 +333,9 @@ class Times:
 			if 'starttime' in enc_as_rep_part and enc_as_rep_part['starttime'] else 0
 		t.endtime = dt_to_kerbtime(enc_as_rep_part['endtime']) \
 			if 'endtime' in enc_as_rep_part and enc_as_rep_part['endtime'] else 0
-		t.renew_till = dt_to_kerbtime(enc_as_rep_part['renew_till']) \
-			if 'renew_till' in enc_as_rep_part and enc_as_rep_part['renew_till'] else 0
+		# The ASN.1 field is 'renew-till' (hyphen), not 'renew_till'.
+		t.renew_till = dt_to_kerbtime(enc_as_rep_part['renew-till']) \
+			if 'renew-till' in enc_as_rep_part and enc_as_rep_part['renew-till'] else 0
 		return t
 	
 	@staticmethod
