@@ -1,0 +1,95 @@
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  offline:
+    name: offline (py ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package + pytest
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
+
+      - name: Run offline test suite
+        run: |
+          pytest -v \
+            tests/test_encryption.py \
+            tests/test_tgs_checksum.py \
+            tests/test_ccache.py \
+            tests/test_keytab.py \
+            tests/test_kirbi.py \
+            tests/test_credential.py \
+            tests/test_url.py \
+            tests/test_version.py
+
+  kdc-integration:
+    name: KDC integration (MIT + Heimdal)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install package + pytest
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
+
+      - name: Build KDC images
+        run: |
+          docker build -t mk-mit tests/ci/mit
+          docker build -t mk-heimdal tests/ci/heimdal
+
+      - name: Start KDCs
+        run: |
+          docker run -d --name mk-mit -p 127.0.0.1:18801:88 mk-mit
+          docker run -d --name mk-heimdal -p 127.0.0.1:18802:88 mk-heimdal
+
+      - name: Wait for KDCs to accept connections
+        shell: bash
+        run: |
+          for i in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/18801) 2>/dev/null && (exec 3<>/dev/tcp/127.0.0.1/18802) 2>/dev/null; then
+              echo "KDCs are up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "KDCs did not come up in time" >&2
+          docker logs mk-mit || true
+          docker logs mk-heimdal || true
+          exit 1
+
+      - name: Run KDC integration tests
+        env:
+          MINIKERBEROS_MIT_PORT: '18801'
+          MINIKERBEROS_HEIMDAL_PORT: '18802'
+        run: pytest -v tests/test_kdc_integration.py
+
+      - name: Dump KDC logs on failure
+        if: failure()
+        run: |
+          docker logs mk-mit || true
+          docker logs mk-heimdal || true
