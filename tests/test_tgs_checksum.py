@@ -91,10 +91,9 @@ def assert_wire(data, key, expected_type):
 
 
 @pytest.mark.parametrize('enctype,checksum_type', [(17, 15), (18, 16), (23, -138), (16, 12)])
-@pytest.mark.parametrize('is_linux', [False, True])
 @pytest.mark.parametrize('is_async', [False, True])
 @pytest.mark.parametrize('override', [None, [17, 23]])
-def test_sent_tgs_checksum(enctype, checksum_type, is_linux, is_async, override):
+def test_sent_tgs_checksum(enctype, checksum_type, is_async, override):
     credential = KerberosCredential()
     credential.username = 'user'
     credential.domain = 'ZSB.TEST'
@@ -107,14 +106,14 @@ def test_sent_tgs_checksum(enctype, checksum_type, is_linux, is_async, override)
     spn = KerberosSPN.from_spn('cifs/ipa.zsb.test@ZSB.TEST')
     with pytest.raises(Captured):
         if is_async:
-            asyncio.run(client.get_TGS(spn, override_etype=override, is_linux=is_linux))
+            asyncio.run(client.get_TGS(spn, override_etype=override))
         else:
-            client.get_TGS(spn, override_etype=override, is_linux=is_linux)
+            client.get_TGS(spn, override_etype=override)
     assert len(capture.requests) == 1
     request, auth = assert_wire(capture.requests[0], key, checksum_type)
     expected = override or ([enctype, 23] if is_async else [enctype])
     assert request['req-body']['etype'].native == expected
-    assert auth['seq-number'].native == (0 if is_linux else None)
+    assert auth['seq-number'].native is None
 
 
 @pytest.mark.parametrize('enctype,expected', [
@@ -134,24 +133,54 @@ def test_legacy_string_to_key_vectors(enctype, expected):
     assert string_to_key(enctype, 'password', b'ATHENA.MIT.EDUraeburn').contents.hex() == expected
 
 
-@pytest.mark.parametrize('is_async', [False, True])
 @pytest.mark.parametrize('enctype,size', [(3, 8), (-128, 16)])
-def test_unsupported_enctype_rejected_before_transport(is_async, enctype, size):
+def test_tgs_checksum_unsupported_returns_none(enctype, size):
+    from minikerberos.protocol.tgs_checksum import tgs_checksum
+    assert tgs_checksum(Key(enctype, b'\x01' * size), b'body') is None
+
+
+@pytest.mark.parametrize('enctype,size,checksum_type', [
+    (17, 16, 15), (18, 32, 16), (23, 16, -138), (16, 24, 12),
+])
+def test_tgs_checksum_supported_types(enctype, size, checksum_type):
+    from minikerberos.protocol.tgs_checksum import tgs_checksum
+    # non-degenerate key bytes (DES3 rejects keys that collapse to single DES)
+    key_bytes = bytes((i % 251) + 1 for i in range(size))
+    assert tgs_checksum(Key(enctype, key_bytes), b'body')['cksumtype'] == checksum_type
+
+
+# RC4-MD4 (-128) and DES (3) session keys have no keyed, collision-proof
+# checksum profile, so get_TGS must still send the request with no authenticator
+# checksum (the behaviour Windows KDCs accept). The authenticator is encrypted
+# with the session key, so this also exercises the _DESCBC Python 3 fixes.
+@pytest.mark.parametrize('is_async', [False, True])
+@pytest.mark.parametrize('enctype,key_bytes', [
+    (-128, b'\x01' * 16),
+    (3, bytes.fromhex('133457799BBCDFF1')),  # valid, non-weak DES key
+])
+def test_unsupported_enctype_omits_checksum(is_async, enctype, key_bytes):
     credential = KerberosCredential()
+    credential.username = 'user'
+    credential.domain = 'ZSB.TEST'
     client = (AIOKerberosClient if is_async else KerbrosClient)(
         credential, KerberosTarget('127.0.0.1'),
     )
     seed_client(client)
-    client.kerberos_session_key = Key(enctype, b'\x01' * size)
+    key = Key(enctype, key_bytes)
+    client.kerberos_session_key = key
+    client.kerberos_cipher = _enctype_table[enctype]
+    client.kerberos_cipher_type = enctype
     capture = AsyncCapture() if is_async else Capture()
     client.ksoc = capture
     spn = KerberosSPN.from_spn('cifs/ipa.zsb.test@ZSB.TEST')
-    with pytest.raises(ValueError, match='Unsupported TGS session key'):
+    with pytest.raises(Captured):
         if is_async:
             asyncio.run(client.get_TGS(spn))
         else:
             client.get_TGS(spn)
-    assert not capture.requests
+    assert len(capture.requests) == 1
+    _, auth = unpack(capture.requests[0], key)
+    assert auth['cksum'].native is None
 
 
 @pytest.mark.parametrize('is_async', [False, True])

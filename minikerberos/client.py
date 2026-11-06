@@ -345,7 +345,7 @@ class KerbrosClient:
 		except Exception as e:
 			return None, None, None, e
 		
-	def get_TGS(self, spn_user, override_etype = None, is_linux = False):
+	def get_TGS(self, spn_user, override_etype = None):
 		"""
 		Requests a TGS ticket for the specified user.
 		Retruns the TGS ticket, end the decrpyted encTGSRepPart.
@@ -393,10 +393,11 @@ class KerbrosClient:
 		authenticator_data['ctime'] = now.replace(microsecond=0)
 		
 		kdc_req_body = KDC_REQ_BODY(kdc_req_body)
-		authenticator_data['cksum'] = Checksum(tgs_checksum(
-			self.kerberos_session_key, kdc_req_body.dump()))
-		if is_linux:
-			authenticator_data['seq-number'] = 0
+		cksum = tgs_checksum(self.kerberos_session_key, kdc_req_body.dump())
+		if cksum is not None:
+			authenticator_data['cksum'] = Checksum(cksum)
+		else:
+			logger.debug('No keyed checksum profile for session key enctype %s; sending TGS-REQ without authenticator checksum' % self.kerberos_session_key.enctype)
 		
 		authenticator_data_enc = self.kerberos_cipher.encrypt(self.kerberos_session_key, 7, Authenticator(authenticator_data).dump(), None)
 		

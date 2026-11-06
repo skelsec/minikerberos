@@ -163,8 +163,24 @@ def test_rc4_cf2():
 	k = cf2(Enctype.RC4, k1, k2, b'a', b'b')
 	assert(k.contents == kb)
 
-def test_des_string_to_key():
-	# DES string-to-key
+def test_des_encrypt_decrypt():
+	# DES encrypt and decrypt round-trip (RFC 3961 DES-MD5 profile).
+	# No published ciphertext test vector, so this guards the Python 3
+	# str/bytes fixes in _DESCBC by asserting a full round-trip + MAC.
+	kb = h('133457799BBCDFF1')
+	keyusage = 7
+	plain = b'13 bytes byte'
+	k = Key(Enctype.DES_MD5, kb)
+	ctxt = encrypt(k, keyusage, plain, h('0001020304050607'))
+	assert(decrypt(k, keyusage, ctxt) == _zeropad(plain, 8))
+	# integrity: a flipped byte must be rejected
+	import pytest
+	from minikerberos.protocol.encryption import InvalidChecksum
+	with pytest.raises(InvalidChecksum):
+		decrypt(k, keyusage, bytes([ctxt[0] ^ 1]) + ctxt[1:])
+
+def test_des_string_to_key_athena():
+	# DES string-to-key (RFC 3961 Appendix A)
 	string = 'password'.encode()
 	salt = 'ATHENA.MIT.EDUraeburn'.encode()
 	kb = h('cbc22fae235298e3')
@@ -172,12 +188,11 @@ def test_des_string_to_key():
 	assert(k.contents == kb)
 
 def test_des_string_to_key():
-	# DES string-to-key
+	# DES string-to-key (RFC 3961 Appendix A)
 	string = 'potatoe'.encode()
 	salt = 'WHITEHOUSE.GOVdanny'.encode()
 	kb = h('df3d32a74fd92a01')
 	k = string_to_key(Enctype.DES_MD5, string, salt)
 	assert(k.contents == kb)
-	print('all tests passed!')
 	
 	

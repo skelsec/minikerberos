@@ -46,7 +46,7 @@ setup(
 	install_requires=[
 		'asn1crypto>=1.5.1',
 		'oscrypto>=1.3.0',
-		'asysocks>=0.2.18',
+		'asysocks>=0.2.19',
 		'unicrypto>=0.0.12',
 		'tqdm',
         'six',

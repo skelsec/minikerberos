@@ -274,8 +274,8 @@ class _DESCBC(_SimplifiedEnctype):
 	def encrypt(cls, key, keyusage, plaintext, confounder):
 		if confounder is None:
 			confounder = get_random_bytes(cls.blocksize)
-		basic_plaintext = confounder + '\x00'*cls.macsize + _zeropad(plaintext, cls.padsize)
-		checksum = cls.hashmod.new(basic_plaintext).digest()
+		basic_plaintext = confounder + b'\x00'*cls.macsize + _zeropad(plaintext, cls.padsize)
+		checksum = cls.hashmod(basic_plaintext).digest()
 		basic_plaintext = basic_plaintext[:len(confounder)] + checksum + basic_plaintext[len(confounder)+len(checksum):]
 		return cls.basic_encrypt(key, basic_plaintext)
 		
@@ -290,7 +290,7 @@ class _DESCBC(_SimplifiedEnctype):
 		mac = complex_plaintext[cls.padsize:cls.padsize+cls.macsize]
 		message = complex_plaintext[cls.padsize+cls.macsize:]
 		
-		expmac = cls.hashmod.new(cofounder+'\x00'*cls.macsize+message).digest()
+		expmac = cls.hashmod(cofounder+b'\x00'*cls.macsize+message).digest()
 		if not _mac_equal(mac, expmac):
 			raise InvalidChecksum('ciphertext integrity failure')
 		return message
@@ -353,13 +353,13 @@ class _DESCBC(_SimplifiedEnctype):
 		
 		tempkey = b''.join(byte.to_bytes(1, byteorder = 'big', signed = False) for byte in addparity(tempstring))
 		if _is_weak_des_key(tempkey):
-			tempkey[7] = (tempkey[7] ^ 0xF0).to_bytes(1, byteorder = 'big', signed = False)
+			tempkey = tempkey[:7] + bytes([tempkey[7] ^ 0xF0])
 		
 		cipher = DES(tempkey, MODE_CBC, tempkey)
 		chekcsumkey = cipher.encrypt(s)[-8:]
 		chekcsumkey = fixparity(chekcsumkey)
 		if _is_weak_des_key(chekcsumkey):
-			chekcsumkey[7] = chr(ord(chekcsumkey[7]) ^ 0xF0)
+			chekcsumkey = chekcsumkey[:7] + bytes([chekcsumkey[7] ^ 0xF0])
 		
 		return Key(cls.enctype, chekcsumkey)
 
