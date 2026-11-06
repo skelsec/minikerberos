@@ -22,6 +22,16 @@ import pytest
 
 from minikerberos.common.factory import KerberosClientFactory
 from minikerberos.common.spn import KerberosSPN
+from minikerberos.protocol.errors import KerberosError, KerberosErrorCode
+
+
+def _skip_if_etype_unsupported(exc, etype):
+    # A KDC may refuse deprecated enctypes (DES3/RC4 are disabled by default on
+    # newer MIT/Heimdal builds). That is a property of the KDC, not the client,
+    # so treat it as "not applicable here" rather than a failure.
+    if isinstance(exc, KerberosError) and exc.errorcode == KerberosErrorCode.KDC_ERR_ETYPE_NOSUPP:
+        pytest.skip('KDC does not support etype %d' % etype)
+    raise exc
 
 
 def _reachable(port):
@@ -60,7 +70,10 @@ def _url(realm, port, etype):
 def test_get_tgs_sync(kdc, etype):
     realm, port, spn = KDCS[kdc]
     client = KerberosClientFactory.from_url(_url(realm, port, etype)).get_client_blocking()
-    client.get_TGT()
+    try:
+        client.get_TGT()
+    except KerberosError as e:
+        _skip_if_etype_unsupported(e, etype)
     assert client.kerberos_session_key.enctype == etype
     tgs, encpart, key = client.get_TGS(KerberosSPN.from_spn(spn))
     assert tgs is not None
@@ -74,7 +87,10 @@ def test_get_tgs_async(kdc, etype):
 
     async def run():
         client = KerberosClientFactory.from_url(_url(realm, port, etype)).get_client()
-        await client.get_TGT()
+        try:
+            await client.get_TGT()
+        except KerberosError as e:
+            _skip_if_etype_unsupported(e, etype)
         assert client.kerberos_session_key.enctype == etype
         return await client.get_TGS(KerberosSPN.from_spn(spn))
 

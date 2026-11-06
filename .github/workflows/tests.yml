@@ -9,7 +9,7 @@ on:
 jobs:
   offline:
     name: offline (py ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
@@ -42,7 +42,7 @@ jobs:
 
   kdc-integration:
     name: KDC integration (MIT + Heimdal)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
