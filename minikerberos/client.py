@@ -5,6 +5,7 @@ from typing import List, Dict
 from unicrypto import hashlib
 
 from minikerberos import logger
+from minikerberos.protocol.tgs_checksum import tgs_checksum
 from minikerberos.common.ccache import CCACHE
 from minikerberos.network.clientsocket import KerberosClientSocket
 from minikerberos.protocol.asn1_structs import METHOD_DATA, ETYPE_INFO, ETYPE_INFO2, \
@@ -16,7 +17,6 @@ from minikerberos.protocol.asn1_structs import METHOD_DATA, ETYPE_INFO, ETYPE_IN
 from minikerberos.protocol.errors import KerberosErrorCode, KerberosError
 from minikerberos.protocol.encryption import Key, _enctype_table, _HMACMD5, Enctype, _SHA1AES128,_SHA1AES256
 from minikerberos.protocol.constants import PaDataType, EncryptionType, NAME_TYPE, MESSAGE_TYPE
-from minikerberos.protocol.structures import AuthenticatorChecksum
 from minikerberos.protocol.rfc4556 import PKAuthenticator, AuthPack, PA_PK_AS_REP, KDCDHKeyInfo, PA_PK_AS_REQ
 from minikerberos.common.creds import KerberosCredential
 from minikerberos.common.target import KerberosTarget
@@ -392,17 +392,10 @@ class KerbrosClient:
 		authenticator_data['cusec'] = now.microsecond
 		authenticator_data['ctime'] = now.replace(microsecond=0)
 		
+		kdc_req_body = KDC_REQ_BODY(kdc_req_body)
+		authenticator_data['cksum'] = Checksum(tgs_checksum(
+			self.kerberos_session_key, kdc_req_body.dump()))
 		if is_linux:
-			ac = AuthenticatorChecksum()
-			ac.flags = 0
-			ac.channel_binding = b'\x00'*16
-			
-			chksum = {}
-			chksum['cksumtype'] = 0x8003
-			chksum['checksum'] = ac.to_bytes()
-
-
-			authenticator_data['cksum'] = Checksum(chksum)
 			authenticator_data['seq-number'] = 0
 		
 		authenticator_data_enc = self.kerberos_cipher.encrypt(self.kerberos_session_key, 7, Authenticator(authenticator_data).dump(), None)
@@ -423,7 +416,7 @@ class KerbrosClient:
 		kdc_req['pvno'] = krb5_pvno
 		kdc_req['msg-type'] = MESSAGE_TYPE.KRB_TGS_REQ.value
 		kdc_req['padata'] = [pa_data_1]
-		kdc_req['req-body'] = KDC_REQ_BODY(kdc_req_body)
+		kdc_req['req-body'] = kdc_req_body
 		
 		req = TGS_REQ(kdc_req)
 		logger.debug('Constructing TGS request to server')
