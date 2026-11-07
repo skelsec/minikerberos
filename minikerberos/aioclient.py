@@ -471,7 +471,8 @@ class AIOKerberosClient:
 				# but we can request etype 23 here for which all is implemented
 				kdc_req_body['etype'] = [23]
 			else:
-				kdc_req_body['etype'] = [self.kerberos_cipher_type, 23]
+				# the service ticket's session key etype is independent of the TGT's
+				kdc_req_body['etype'] = [18, 17, 23]
 
 		authenticator_data = {}
 		authenticator_data['authenticator-vno'] = krb5_pvno
@@ -528,7 +529,6 @@ class AIOKerberosClient:
 			logger.debug('[U2U] TGT is not available! Fetching TGT...')
 			await self.get_TGT()
 
-		supp_enc = self.credential.get_preferred_enctype(supp_enc_methods)
 		now = datetime.datetime.now(datetime.timezone.utc)
 		authenticator_data = {}
 		authenticator_data['authenticator-vno'] = krb5_pvno
@@ -558,7 +558,7 @@ class AIOKerberosClient:
 		krb_tgs_body['realm'] = self.credential.domain.upper()
 		krb_tgs_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		krb_tgs_body['nonce'] = secrets.randbits(31)
-		krb_tgs_body['etype'] = [23] # dunno why it must be 23?
+		krb_tgs_body['etype'] = [18, 17, 23] # AES preferred; KDC picks a supported one.
 		krb_tgs_body['additional-tickets'] = [Ticket(self.kerberos_TGT['ticket'])]
 		
 		
@@ -700,7 +700,7 @@ class AIOKerberosClient:
 		krb_tgs_body['realm'] = self.credential.domain.upper()
 		krb_tgs_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		krb_tgs_body['nonce'] = secrets.randbits(31)
-		krb_tgs_body['etype'] = [self.kerberos_session_key.enctype] #[supp_enc.value] #selecting according to server's preferences
+		krb_tgs_body['etype'] = [18, 17, 23] # AES preferred; KDC picks a supported one. Independent of the TGT session key etype.
 		
 		
 		krb_tgs_req = {}
@@ -769,7 +769,7 @@ class AIOKerberosClient:
 		krb_tgs_body['realm'] = self.credential.domain.upper()
 		krb_tgs_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		krb_tgs_body['nonce'] = secrets.randbits(31)
-		krb_tgs_body['etype'] = [self.kerberos_session_key.enctype] #[supp_enc.value] #selecting according to server's preferences
+		krb_tgs_body['etype'] = [18, 17, 23] # AES preferred; KDC picks a supported one. Independent of the TGT session key etype.
 		krb_tgs_body['additional-tickets'] = [s4uself_ticket]
 		
 		
@@ -881,7 +881,7 @@ class AIOKerberosClient:
 		krb_tgs_body['realm'] = self.credential.domain.upper()
 		krb_tgs_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		krb_tgs_body['nonce'] = BODY_NONCE
-		krb_tgs_body['etype'] = [self.kerberos_session_key.enctype] #[supp_enc.value] #selecting according to server's preferences
+		krb_tgs_body['etype'] = [18, 17, 23] # AES preferred; KDC picks a supported one. Independent of the TGT session key etype.
 		
 		
 		krb_tgs_req = {}

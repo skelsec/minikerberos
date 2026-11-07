@@ -111,7 +111,7 @@ def test_sent_tgs_checksum(enctype, checksum_type, is_async, override):
             client.get_TGS(spn, override_etype=override)
     assert len(capture.requests) == 1
     request, auth = assert_wire(capture.requests[0], key, checksum_type)
-    expected = override or ([enctype, 23] if is_async else [enctype])
+    expected = override or [18, 17, 23]
     assert request['req-body']['etype'].native == expected
     assert auth['seq-number'].native is None
 

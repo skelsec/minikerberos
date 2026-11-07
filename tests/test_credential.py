@@ -32,6 +32,15 @@ def test_addsecret_password():
 	cred.add_secret(KerberosSecretType.PASSWORD, 'password')
 	assert cred.password == 'password'
 
+def test_password_prefers_aes():
+	cred = KerberosCredential()
+	cred.domain = 'domain'
+	cred.username = 'user'
+	cred.add_secret(KerberosSecretType.PASSWORD, 'password')
+	server = [EncryptionType.ARCFOUR_HMAC_MD5, EncryptionType.AES128_CTS_HMAC_SHA1_96, EncryptionType.AES256_CTS_HMAC_SHA1_96]
+	assert cred.get_preferred_enctype(server) == EncryptionType.AES256_CTS_HMAC_SHA1_96
+	assert cred.get_preferred_enctype([EncryptionType.ARCFOUR_HMAC_MD5]) == EncryptionType.ARCFOUR_HMAC_MD5
+
 def test_addsecret_rc4():
 	cred = KerberosCredential()
 	cred.domain = 'domain'

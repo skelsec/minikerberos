@@ -383,7 +383,8 @@ class KerbrosClient:
 				# but we can request etype 23 here for which all is implemented
 				kdc_req_body['etype'] = [23]
 			else:
-				kdc_req_body['etype'] = [self.kerberos_cipher_type]
+				# the service ticket's session key etype is independent of the TGT's
+				kdc_req_body['etype'] = [18, 17, 23]
 
 		authenticator_data = {}
 		authenticator_data['authenticator-vno'] = krb5_pvno
@@ -440,7 +441,6 @@ class KerbrosClient:
 			logger.debug('[U2U] TGT is not available! Fetching TGT...')
 			self.get_TGT()
 
-		supp_enc = self.credential.get_preferred_enctype(supp_enc_methods)
 		now = datetime.datetime.now(datetime.timezone.utc)
 		authenticator_data = {}
 		authenticator_data['authenticator-vno'] = krb5_pvno
@@ -470,7 +470,7 @@ class KerbrosClient:
 		krb_tgs_body['realm'] = self.credential.domain.upper()
 		krb_tgs_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		krb_tgs_body['nonce'] = secrets.randbits(31)
-		krb_tgs_body['etype'] = [23] # dunno why it must be 23?
+		krb_tgs_body['etype'] = [18, 17, 23] # AES preferred; KDC picks a supported one.
 		krb_tgs_body['additional-tickets'] = [Ticket(self.kerberos_TGT['ticket'])]
 		
 		
@@ -517,7 +517,6 @@ class KerbrosClient:
 			logger.debug('[S4U2self] TGT is not available! Fetching TGT...')
 			self.get_TGT()
 		
-		supp_enc = self.credential.get_preferred_enctype(supp_enc_methods)
 		auth_package_name = 'Kerberos'
 		now = datetime.datetime.now(datetime.timezone.utc)
 		
@@ -609,7 +608,7 @@ class KerbrosClient:
 		krb_tgs_body['realm'] = self.credential.domain.upper()
 		krb_tgs_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		krb_tgs_body['nonce'] = secrets.randbits(31)
-		krb_tgs_body['etype'] = [self.kerberos_session_key.enctype] #[supp_enc.value] #selecting according to server's preferences
+		krb_tgs_body['etype'] = [18, 17, 23] # AES preferred; KDC picks a supported one. Independent of the TGT session key etype.
 		
 		
 		krb_tgs_req = {}
@@ -644,8 +643,6 @@ class KerbrosClient:
 	def S4U2proxy(self, s4uself_ticket, spn_user, supp_enc_methods = [EncryptionType.ARCFOUR_HMAC_MD5,EncryptionType.AES256_CTS_HMAC_SHA1_96,EncryptionType.AES128_CTS_HMAC_SHA1_96]):
 		logger.debug('[S4U2proxy] Impersonating %s' % '/'.join(spn_user.get_principalname()))
 		now = datetime.datetime.now(datetime.timezone.utc)
-		supp_enc = self.credential.get_preferred_enctype(supp_enc_methods)
-		
 		pa_pac_opts = {}
 		pa_pac_opts['padata-type'] = int(PADATA_TYPE('PA-PAC-OPTIONS'))
 		pa_pac_opts['padata-value'] = PA_PAC_OPTIONS({'value' : PA_PAC_OPTIONSTypes(set(['resource-based constrained delegation']))}).dump()
@@ -679,7 +676,7 @@ class KerbrosClient:
 		krb_tgs_body['realm'] = self.credential.domain.upper()
 		krb_tgs_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		krb_tgs_body['nonce'] = secrets.randbits(31)
-		krb_tgs_body['etype'] = [self.kerberos_session_key.enctype] #[supp_enc.value] #selecting according to server's preferences
+		krb_tgs_body['etype'] = [18, 17, 23] # AES preferred; KDC picks a supported one. Independent of the TGT session key etype.
 		krb_tgs_body['additional-tickets'] = [s4uself_ticket]
 		
 		

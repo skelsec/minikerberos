@@ -188,14 +188,15 @@ class KerberosCredential:
 				supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
 
 			if self.password:
-				supp_enctypes[EncryptionType.DES_CBC_CRC] = 1
-				supp_enctypes[EncryptionType.DES_CBC_MD4] = 1
-				supp_enctypes[EncryptionType.DES_CBC_MD5] = 1
-				supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
-				supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
-				supp_enctypes[EncryptionType.ARCFOUR_MD4] = 1
+				# order is preference: get_preferred_enctype picks the first common one
 				supp_enctypes[EncryptionType.AES256_CTS_HMAC_SHA1_96] = 1
 				supp_enctypes[EncryptionType.AES128_CTS_HMAC_SHA1_96] = 1
+				supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
+				supp_enctypes[EncryptionType.ARCFOUR_MD4] = 1
+				supp_enctypes[EncryptionType.DES3_CBC_SHA1] = 1
+				supp_enctypes[EncryptionType.DES_CBC_MD5] = 1
+				supp_enctypes[EncryptionType.DES_CBC_MD4] = 1
+				supp_enctypes[EncryptionType.DES_CBC_CRC] = 1
 
 			if self.password or self.nt_hash or self.kerberos_key_rc4:
 				supp_enctypes[EncryptionType.ARCFOUR_HMAC_MD5] = 1
