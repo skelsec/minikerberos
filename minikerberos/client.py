@@ -370,7 +370,7 @@ class KerbrosClient:
 		logger.debug('Constructing TGS request for user %s' % spn_user.get_formatted_pname())
 		now = datetime.datetime.now(datetime.timezone.utc)
 		kdc_req_body = {}
-		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','renewable_ok', 'canonicalize']))
+		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','renewable-ok', 'canonicalize']))
 		kdc_req_body['realm'] = spn_user.domain.upper()
 		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.SRV_INST.value, 'name-string': spn_user.get_principalname()})
 		kdc_req_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
