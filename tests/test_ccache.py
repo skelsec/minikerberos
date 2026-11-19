@@ -253,3 +253,86 @@ def test_times_from_asn1_without_renew_till_is_zero():
 	start = datetime.datetime(2025, 8, 8, 12, 0, 0, tzinfo=datetime.timezone.utc)
 	times = Times.from_asn1({'authtime': start, 'starttime': start, 'endtime': start})
 	assert times.renew_till == 0
+
+
+class _StubServer:
+	def __init__(self, s):
+		self._s = s
+
+	def to_string(self, separator='/'):
+		return self._s
+
+
+class _StubTgtCredential:
+	"""Minimal stand-in for Credential, enough for get_all_tgt/get_tgt."""
+
+	def __init__(self, server_names, ticket_realm, cname, crealm):
+		self.server = _StubServer('/'.join(server_names))
+		self._tgt = {
+			'ticket': {'sname': {'name-string': list(server_names)}, 'realm': ticket_realm},
+			'cname': {'name-string': list(cname)},
+			'crealm': crealm,
+		}
+
+	def to_tgt(self):
+		return self._tgt, {'keytype': 18, 'keyvalue': b'\x00' * 32}
+
+
+def _ccache_with_referral_tgts():
+	# Same principal throughout: a TGT for the client's own realm, plus a
+	# referral ticket for another realm. This is the layout in the issue.
+	ccache = CCACHE(empty=True)
+	ccache.credentials = [
+		_StubTgtCredential(['krbtgt', 'TREE2.LAB'], 'TREE2.LAB', ['jane'], 'TREE2.LAB'),
+		_StubTgtCredential(['krbtgt', 'BLOODY.CORP'], 'TREE2.LAB', ['jane'], 'TREE2.LAB'),
+	]
+	return ccache
+
+
+def test_get_tgt_selects_by_target_realm():
+	ccache = _ccache_with_referral_tgts()
+
+	# No target realm: first TGT wins, exactly as before.
+	tgt, key, err = ccache.get_tgt('jane', 'TREE2.LAB')
+	assert err is None
+	assert tgt['ticket']['sname']['name-string'] == ['krbtgt', 'TREE2.LAB']
+
+	# Referral realm requested: the referral ticket must be picked, otherwise
+	# the KDC rejects the resulting service ticket request.
+	tgt, key, err = ccache.get_tgt('jane', 'TREE2.LAB', target_realm='BLOODY.CORP')
+	assert err is None
+	assert tgt['ticket']['sname']['name-string'] == ['krbtgt', 'BLOODY.CORP']
+
+	# Realm that no TGT covers: fall back to the previous behaviour rather than
+	# failing, so callers that cannot benefit are unaffected.
+	tgt, key, err = ccache.get_tgt('jane', 'TREE2.LAB', target_realm='UNREACHABLE.LAB')
+	assert err is None
+	assert tgt['ticket']['sname']['name-string'] == ['krbtgt', 'TREE2.LAB']
+
+
+class _RecordingTgtCCACHE:
+	def __init__(self):
+		self.seen = []
+
+	def get_tgt(self, username, domain=None, strict=False, target_realm=None):
+		self.seen.append(target_realm)
+		return None, None, Exception('stop here')
+
+
+def test_tgt_from_ccache_forwards_target_realm():
+	from minikerberos.client import KerbrosClient
+	from minikerberos.aioclient import AIOKerberosClient
+	from minikerberos.common.creds import KerberosCredential
+
+	for cls in (KerbrosClient, AIOKerberosClient):
+		inst = cls.__new__(cls)
+		inst.ccache = _RecordingTgtCCACHE()
+		inst.credential = KerberosCredential()
+		inst.tgt_from_ccache('BLOODY.CORP')
+		assert inst.ccache.seen == ['BLOODY.CORP']
+
+		inst = cls.__new__(cls)
+		inst.ccache = _RecordingTgtCCACHE()
+		inst.credential = KerberosCredential()
+		inst.tgt_from_ccache()
+		assert inst.ccache.seen == [None]
