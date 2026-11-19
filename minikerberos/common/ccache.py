@@ -16,6 +16,22 @@ from minikerberos.common.kirbi import Kirbi
 from minikerberos.common.spn import KerberosSPN
 
 
+def _tgt_target_realm(tgt):
+	"""
+	Returns the realm a TGT is valid for, in upper case.
+
+	For 'krbtgt/TARGET.REALM@CLIENT.REALM' the ticket realm is the client's own
+	realm, while the realm the ticket is good for is the second component of the
+	server principal. Referral tickets differ only in that component, so this is
+	what distinguishes them.
+	"""
+	name_string = tgt['ticket']['sname']['name-string']
+	if len(name_string) >= 2 and str(name_string[0]).lower() == 'krbtgt':
+		return str(name_string[1]).upper()
+	return str(tgt['ticket']['realm']).upper()
+
+
+
 
 # http://repo.or.cz/w/krb5dissect.git/blob_plain/HEAD:/ccache.txt
 class Header:
@@ -656,10 +672,20 @@ class CCACHE:
 		# this is a hack...
 		return tgss[0][0], tgss[0][1], None
 	
-	def get_tgt(self, username, domain = None, strict:bool=False):
+	def get_tgt(self, username, domain = None, strict:bool=False, target_realm:str = None):
 		tgts = [x for x in self.get_all_tgt()]
 		if len(tgts) == 0:
 			return None, None, Exception('No TGT found in CCACHE file')
+		
+		if target_realm is not None:
+			# A ccache with referral tickets holds one TGT per reachable realm and
+			# every one of them carries the same client principal, so the
+			# username/domain match below cannot tell them apart. Narrow the
+			# candidates to the realm we are actually about to talk to.
+			wanted = str(target_realm).upper()
+			matching = [x for x in tgts if _tgt_target_realm(x[0]) == wanted]
+			if len(matching) > 0:
+				tgts = matching
 		
 		if strict is False:
 			if username is None:
