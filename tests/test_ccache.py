@@ -336,3 +336,36 @@ def test_tgt_from_ccache_forwards_target_realm():
 		inst.credential = KerberosCredential()
 		inst.tgt_from_ccache()
 		assert inst.ccache.seen == [None]
+class _RecordingCCACHE:
+	"""Records the strict argument a client forwards to get_tgs."""
+
+	def __init__(self):
+		self.seen = []
+
+	def get_tgs(self, spn, strict=False):
+		self.seen.append(strict)
+		return None, None, Exception('no TGS for %s' % spn)
+
+
+def _tgs_from_ccache_strict_pass(cls, spn, strict_flag):
+	from minikerberos.common.creds import KerberosCredential
+	inst = cls.__new__(cls)
+	inst.ccache = _RecordingCCACHE()
+	inst.credential = KerberosCredential()
+	inst.credential.ccache_spn_strict_check = strict_flag
+	inst.tgs_from_ccache(spn)
+	return inst.ccache.seen
+
+
+def test_tgs_from_ccache_forwards_strict_flag():
+	# get_tgt_from_ccache already forwards credential.ccache_spn_strict_check;
+	# tgs_from_ccache called get_tgs without it, so asking for strict matching
+	# silently fell back to "return the first TGS available".
+	from minikerberos.client import KerbrosClient
+	from minikerberos.aioclient import AIOKerberosClient
+	from minikerberos.common.spn import KerberosSPN
+
+	spn = KerberosSPN.from_spn('cifs/absent.service@TEST.CORP')
+	for cls in (KerbrosClient, AIOKerberosClient):
+		assert _tgs_from_ccache_strict_pass(cls, spn, True) == [True]
+		assert _tgs_from_ccache_strict_pass(cls, spn, False) == [False]

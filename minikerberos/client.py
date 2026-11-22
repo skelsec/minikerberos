@@ -335,7 +335,7 @@ class KerbrosClient:
 			if self.ccache is None:
 				raise Exception('No CCACHE file found')
 			
-			tgs, keystruct, err = self.ccache.get_tgs(spn_user)
+			tgs, keystruct, err = self.ccache.get_tgs(spn_user, self.credential.ccache_spn_strict_check)
 			if err is not None:
 				raise err
 			
