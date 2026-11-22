@@ -653,4 +653,4 @@ def parse_bitmask(dict, value):
     if len(ret) == 0:
         return '0'
     else:
-        return ret[:-3
+        return ret[:-3]
