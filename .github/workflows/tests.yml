@@ -34,6 +34,7 @@ jobs:
             tests/test_encryption.py \
             tests/test_tgs_checksum.py \
             tests/test_ccache.py \
+            tests/test_ticketer.py \
             tests/test_keytab.py \
             tests/test_kirbi.py \
             tests/test_credential.py \

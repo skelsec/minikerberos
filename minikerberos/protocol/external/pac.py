@@ -32,6 +32,12 @@ PAC_PRIVSVR_CHECKSUM = 7
 PAC_CLIENT_INFO_TYPE = 10
 PAC_DELEGATION_INFO  = 11
 PAC_UPN_DNS_INFO     = 12
+PAC_DEVICE_INFO_TYPE = 14
+PAC_DEVICE_CLAIMS_INFO_TYPE = 15
+PAC_TICKET_CHECKSUM  = 16
+PAC_ATTRIBUTES_INFO  = 17
+PAC_FULL_PAC_CHECKSUM = 19
+PAC_REQUESTOR_INFO   = 113
 
 ################################################################################
 # STRUCTURES
@@ -206,6 +212,33 @@ class UPN_DNS_INFO(Structure):
         ('DnsDomainNameLength', '<H=0'),
         ('DnsDomainNameOffset', '<H=0'),
         ('Flags', '<L=0'),
+    )
+
+# 2.10 UPN_DNS_INFO with the SamName/Sid extension (Flags bit S set)
+class UPN_DNS_INFO_FULL(Structure):
+    structure = (
+        ('UpnLength', '<H=0'),
+        ('UpnOffset', '<H=0'),
+        ('DnsDomainNameLength', '<H=0'),
+        ('DnsDomainNameOffset', '<H=0'),
+        ('Flags', '<L=0'),
+        ('SamNameLength', '<H=0'),
+        ('SamNameOffset', '<H=0'),
+        ('SidLength', '<H=0'),
+        ('SidOffset', '<H=0'),
+    )
+
+# 2.14 PAC_ATTRIBUTES_INFO
+class PAC_ATTRIBUTE_INFO(Structure):
+    structure = (
+        ('FlagsLength', '<L=0'),
+        ('Flags', '<L=0'),
+    )
+
+# 2.15 PAC_REQUESTOR
+class PAC_REQUESTOR(Structure):
+    structure = (
+        ('UserSid', ':'),
     )
 
 # 2.11 PAC_CLIENT_CLAIMS_INFO

