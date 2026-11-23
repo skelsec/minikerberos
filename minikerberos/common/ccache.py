@@ -658,6 +658,8 @@ class CCACHE:
 	
 	def get_tgs(self, spn:KerberosSPN, strict:bool=False):
 		tgss = self.get_all_tgs()
+		if len(tgss) == 0:
+			return None, None, Exception('No TGS found in CCACHE file')
 		for tgs, keystruct in tgss:
 			ticket_for = ('/'.join(tgs['ticket']['sname']['name-string'])) + '@' + tgs['ticket']['realm']
 			if ticket_for.upper() == str(spn).upper():
