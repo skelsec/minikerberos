@@ -742,10 +742,14 @@ class CCACHE:
 
 		return hashes
 		
+	VALID_FILE_FORMAT_VERSIONS = (0x0501, 0x0502, 0x0503, 0x0504)
+
 	@staticmethod
 	def parse(reader:io.BytesIO):
 		c = CCACHE(True)
 		c.file_format_version = int.from_bytes(reader.read(2), byteorder='big', signed=False)
+		if c.file_format_version not in CCACHE.VALID_FILE_FORMAT_VERSIONS:
+			raise ValueError('Not a CCACHE file! Invalid file format version: 0x%04x' % c.file_format_version)
 		
 		hdr_size = int.from_bytes(reader.read(2), byteorder='big', signed=False)
 		c.headers = Header.parse(reader.read(hdr_size))
