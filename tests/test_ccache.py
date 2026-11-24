@@ -2,10 +2,18 @@
 import pathlib
 import base64
 import tempfile
+
+import pytest
 from minikerberos.common.kirbi import Kirbi
 from minikerberos.common.ccache import CCACHE, Header, DateTime, Times,\
 	Address, CCACHEOctetString, Authdata, Credential
 from .config import *
+
+def test_load_invalid_ccache():
+	with pytest.raises(ValueError, match='Not a CCACHE file'):
+		CCACHE.from_bytes(b'garbage\n')
+	with pytest.raises(ValueError, match='Not a CCACHE file'):
+		CCACHE.from_bytes(b'')
 
 def test_load_ccache():
 	for ccachefile in get_testfiles_ccache():
