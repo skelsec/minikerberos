@@ -135,6 +135,22 @@ def test_get_all_tgt_1():
 
 
 
+def test_get_tgs_on_ccache_without_tgs_entries():
+	# administrator.ccache holds a TGT only, so get_all_tgs() returns nothing.
+	# get_tgs must report that like get_tgt does for a missing TGT, instead of
+	# failing on the fallback that returns "the first TGS".
+	for ccachefile in get_testfiles_ccache():
+		if ccachefile.name != 'administrator.ccache':
+			continue
+		ccache = CCACHE.from_file(ccachefile)
+		assert len(ccache.get_all_tgs()) == 0
+		tgs, keystruct, err = ccache.get_tgs('cifs/DC01.POUDLARD.WIZARD@POUDLARD.WIZARD')
+		assert tgs is None
+		assert keystruct is None
+		assert isinstance(err, Exception)
+		assert 'No TGS found in CCACHE file' in str(err)
+
+
 def test_header():
 	h = Header()
 	h.tag = 1
